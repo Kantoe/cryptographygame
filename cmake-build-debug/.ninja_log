@@ -1,0 +1,10 @@
+# ninja log v6
+1	45	1726853147437621268	CMakeFiles/cryptography_game.dir/main.c.o	2b15a8e3fe0e2fa
+24	34	1727973924659279205	/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a	7b760cb87f17fe31
+36	53	1727975543112725950	Client	801b95b4fe7ba0e4
+45	79	1726853147481621549	cryptography_game	a032156b73e0287e
+0	24	1727973924635280100	/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/cryptography_game_util.c.o	76ac9b31d9d0852e
+0	42	1727979209001203433	CMakeFiles/Server.dir/server.c.o	d876e1e6a198b899
+1	36	1727975543077723776	CMakeFiles/Client.dir/client.c.o	f91fe4644add0b6e
+42	64	1727979209043203855	Server	23c8158027ab9314
+1	31	1727286815272268124	CMakeFiles/Client.dir/Client.c.o	51aa5173b7519bc7

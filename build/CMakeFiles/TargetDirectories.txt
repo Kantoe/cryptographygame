@@ -1,0 +1,7 @@
+/home/idokantor/CLionProjects/cryptography_game/build/CMakeFiles/Server.dir
+/home/idokantor/CLionProjects/cryptography_game/build/CMakeFiles/Client.dir
+/home/idokantor/CLionProjects/cryptography_game/build/CMakeFiles/edit_cache.dir
+/home/idokantor/CLionProjects/cryptography_game/build/CMakeFiles/rebuild_cache.dir
+/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
+/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/edit_cache.dir
+/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/rebuild_cache.dir

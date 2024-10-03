@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "/home/idokantor/CLionProjects/cryptography_game_util/build",
+		"source" : "/home/idokantor/CLionProjects/cryptography_game_util"
+	}
+}

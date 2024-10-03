@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/Client.dir/Client.c.o -o Client  /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a 
