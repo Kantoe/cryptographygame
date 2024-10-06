@@ -307,6 +307,6 @@ int main(const int argc, char *argv[]) {
     cleanupClientSockets(acceptedSocketsCount);
     shutdown(serverSocketFD,SHUT_RDWR);
     close(serverSocketFD);
-    pthread_mutex_lock(&globals_mutex);
+    pthread_mutex_destroy(&globals_mutex);
     return 0;
 }
