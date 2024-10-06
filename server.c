@@ -1,4 +1,3 @@
-#include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
@@ -10,6 +9,21 @@
 #define CORRECT_ARGC 2
 #define SERVER_IP "0.0.0.0"
 #define CLIENT_MAX "max 2 clients can connect"
+#define SOCKET_ERROR -1
+#define SOCKET_INIT_ERROR 0
+#define PORT_ARGV 1
+#define MAX_CLIENTS 2
+#define SEND_FLAG 0
+#define SLEEP 100000
+#define PTHREAD_CREATE 1
+#define BUFFER_SIZE 1024
+#define RECEIVE_FLAG 0
+#define CHECK_RECEIVE 0
+#define NULL_CHAR 0
+#define ACCEPTED_SUCCESSFULLY 0
+#define CLIENT_THREAD_EXISTS 0
+#define CLIENT_SOCKET_EXISTS 0
+#define LISTEN 1
 
 //data types
 struct AcceptedSocket {
@@ -21,30 +35,102 @@ struct AcceptedSocket {
 
 //globals
 volatile sig_atomic_t stop = 0;
-struct AcceptedSocket acceptedSockets[2];
+struct AcceptedSocket acceptedSockets[MAX_CLIENTS];
 int acceptedSocketsCount = 0;
-pthread_t clientThreads[2] = {0};
-pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;  // Mutex for globals
+pthread_t clientThreads[MAX_CLIENTS] = {0};
+pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
+//Mutex for globals
 
 //prototypes
+/*
+ * Handles signals, specifically SIGINT (press ctrl+c)
+ * (interrupt signal) to safely terminate the server.
+ * Parameters: signal - The signal number received (e.g., SIGINT).
+ */
+
 void handle_signal(int signal);
+
+/*
+ * Accepts an incoming connection on the server socket.
+ * Parameters: serverSocketFD - The file descriptor for the server socket.
+ * Returns: An AcceptedSocket structure containing the
+ * client socket file descriptor, address,
+ * success flag, and error code (if any).
+ */
 
 struct AcceptedSocket acceptIncomingConnection(int serverSocketFD);
 
-void acceptNewConnectionAndReceiveAndPrintItsData(int serverSocketFD);
+/*
+ * Accepts new incoming connections and starts threads to receive
+ * and print their data.
+ * Parameters: serverSocketFD - The file descriptor for the server socket.
+ * Returns: None.
+ */
+
+/*
+* Function executed by each client thread to receive data
+* from the connected client
+* and print it to the console.
+* Parameters: arg - A pointer to the client socket
+* file descriptor cast to void*.
+* Returns: NULL upon completion.
+ */
 
 void * receiveAndPrintIncomingData(void * arg);
 
+/*
+* Starts the process of accepting incoming connections on the server socket.
+* Continuously checks for new connections until the stop flag is set.
+* Parameters: serverSocketFD - The file descriptor for the server socket.
+* Returns: None.
+ */
+
 void startAcceptingIncomingConnections(int serverSocketFD);
+
+/*
+* Creates a new thread to receive and print data from the connected client.
+* Parameters: clientSocketFD - A pointer to an AcceptedSocket structure
+* containing the client socket file descriptor.
+* Returns: None.
+ */
 
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD);
 
+/*
+* Sends received messages from one client to all other connected clients.
+* Parameters: buffer - The message to be sent.
+* socketFD - The file descriptor of the sender
+* (to exclude it from receiving its own message).
+* Returns: None.
+ */
+
 void sendReceivedMessageToTheOtherClients(const char *buffer,int socketFD);
+
+/*
+* Cleans up and cancels client threads based on the count provided.
+* Parameters: count - The number of client threads to clean up.
+* Returns: None.
+ */
 
 void cleanupThreads(int count);
 
+/*
+* Closes all accepted client sockets based on the count provided.
+* Parameters: count - The number of accepted client sockets to close.
+* Returns: None.
+ */
+
 void cleanupClientSockets(int count);
+
+/*
+* Initializes the server socket, binds it to the specified port,
+* and prepares it to listen for incoming connections.
+* Parameters: port - The port number on which the
+* server will listen for incoming connections.
+* Returns: A valid server socket file descriptor if successful;
+* EXIT_FAILURE if there is an error.
+ */
 
 int initServerSocket(int port);
 
@@ -53,7 +139,7 @@ void startAcceptingIncomingConnections(const int serverSocketFD)
     while(!stop)
     {
         pthread_mutex_lock(&globals_mutex);
-        if(acceptedSocketsCount < 2)
+        if(acceptedSocketsCount < MAX_CLIENTS)
         {
             pthread_mutex_unlock(&globals_mutex);
             struct AcceptedSocket clientSocket =
@@ -69,16 +155,17 @@ void startAcceptingIncomingConnections(const int serverSocketFD)
         {
             pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
-            send(clientSocketFD, CLIENT_MAX, strlen(CLIENT_MAX), 0);
+            send(clientSocketFD, CLIENT_MAX,
+                strlen(CLIENT_MAX), SEND_FLAG);
             close(clientSocketFD);
         }
-        usleep(100000);
+        usleep(SLEEP);
     }
 }
 
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
-    pthread_create(&clientThreads[acceptedSocketsCount - 1],
+    pthread_create(&clientThreads[acceptedSocketsCount - PTHREAD_CREATE],
         NULL, receiveAndPrintIncomingData,
         (void *)(intptr_t)clientSocketFD->acceptedSocketFD);
 }
@@ -86,17 +173,17 @@ void receiveAndPrintIncomingDataOnSeparateThread(
 void * receiveAndPrintIncomingData(void * arg)
 {
     const int clientSocketFD = (intptr_t)arg;
-    char buffer[1024];
+    char buffer[BUFFER_SIZE];
     while(!stop) {
         const ssize_t amountReceived = recv(clientSocketFD,
-            buffer,1024,0);
-        if(amountReceived > 0) {
-            buffer[amountReceived] = 0;
+            buffer,sizeof(buffer),RECEIVE_FLAG);
+        if(amountReceived > CHECK_RECEIVE) {
+            buffer[amountReceived] = NULL_CHAR;
             printf("%s\n",buffer);
 
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
         }
-        if(amountReceived == 0 || stop) {
+        if(amountReceived == CHECK_RECEIVE || stop) {
             break;
         }
     }
@@ -111,7 +198,7 @@ void sendReceivedMessageToTheOtherClients(const char *buffer,
         if(acceptedSockets[i].acceptedSocketFD != socketFD)
         {
             send(acceptedSockets[i].acceptedSocketFD, buffer,
-                strlen(buffer), 0);
+                strlen(buffer), SEND_FLAG);
         }
     pthread_mutex_unlock(&globals_mutex);
 }
@@ -125,11 +212,11 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD)
         (struct sockaddr*)&clientAddress, (socklen_t *)&clientAddressSize);
     acceptedSocket.address = clientAddress;
     acceptedSocket.acceptedSocketFD = clientSocketFD;
-    acceptedSocket.acceptedSuccessfully = clientSocketFD > 0;
-    if(clientSocketFD < 0)
+    acceptedSocket.acceptedSuccessfully = clientSocketFD > ACCEPTED_SUCCESSFULLY;
+    if(clientSocketFD < ACCEPTED_SUCCESSFULLY)
         acceptedSocket.error = clientSocketFD;
     else
-        acceptedSocket.error = 0;
+        acceptedSocket.error = ACCEPTED_SUCCESSFULLY;
     return acceptedSocket;
 }
 
@@ -137,10 +224,11 @@ void cleanupThreads(const int count)
 {
     for (int i = 0; i < count; i++)
     {
-        if(clientThreads[i] != 0)
+        if(clientThreads[i] != CLIENT_THREAD_EXISTS)
         {
             pthread_cancel(clientThreads[i]);
-            pthread_join(clientThreads[i], NULL);  // Wait for each thread to finish
+            pthread_join(clientThreads[i], NULL);
+            // Wait for each thread to finish
         }
     }
 }
@@ -149,7 +237,7 @@ void cleanupClientSockets(const int count)
 {
     for (int i = 0; i < count; i++)
     {
-        if(acceptedSockets[i].acceptedSocketFD > 0)
+        if(acceptedSockets[i].acceptedSocketFD > CLIENT_SOCKET_EXISTS)
         {
             close(acceptedSockets[i].acceptedSocketFD);
         }
@@ -164,20 +252,22 @@ void handle_signal(const int signal)
 
 int initServerSocket(const int port) {
     const int serverSocketFD = createTCPIpv4Socket();
-    if(serverSocketFD == -1) {
+    if(serverSocketFD == SOCKET_ERROR) {
         printf("Error creating server socket\n");
         return EXIT_FAILURE;
     }
     struct sockaddr_in server_address;
-    const int correct_ip = createIPv4Address(SERVER_IP, port, &server_address);
-    if(correct_ip == 0) {
+    const int correct_ip = createIPv4Address(SERVER_IP,
+        port, &server_address);
+    if(correct_ip == SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
     fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
-    const int result = bind(serverSocketFD, (struct sockaddr *)&server_address, sizeof(server_address));
-    if(result == 0) {
+    const int result = bind(serverSocketFD,
+        (struct sockaddr *)&server_address, sizeof(server_address));
+    if(result == SOCKET_INIT_ERROR) {
         printf("socket was bound successfully\n");
     }
     else {
@@ -185,8 +275,8 @@ int initServerSocket(const int port) {
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
-    const int listenResult = listen(serverSocketFD,1);
-    if (listenResult == 0) {
+    const int listenResult = listen(serverSocketFD,LISTEN);
+    if (listenResult == SOCKET_INIT_ERROR) {
         printf("listen successful\n");
     }
     else {
@@ -197,6 +287,10 @@ int initServerSocket(const int port) {
     return serverSocketFD;
 }
 
+/*
+ * main runs server and other functions
+ */
+
 int main(const int argc, char *argv[]) {
     signal(SIGINT, handle_signal);
     if(argc != CORRECT_ARGC)
@@ -204,8 +298,8 @@ int main(const int argc, char *argv[]) {
         printf("incorrect number of arguments\n");
         return EXIT_FAILURE;
     }
-    const int serverSocketFD = initServerSocket(atoi(argv[1]));
-    if(serverSocketFD == 1) {
+    const int serverSocketFD = initServerSocket(atoi(argv[PORT_ARGV]));
+    if(serverSocketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
     startAcceptingIncomingConnections(serverSocketFD);

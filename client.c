@@ -4,7 +4,7 @@
 
 //defines
 #define CORRECT_ARGC 3
-#define REMOVE_NEWLINE -1
+#define REMOVE_NEWLINE 1
 #define REPLACE_NEWLINE 0
 #define CHECK_RECEIVE 0
 #define NULL_CHAR 0
@@ -69,7 +69,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     while(!connectionClosed) {
         char buffer[BUFFER_SIZE];
         const ssize_t charCount = getline(&line, &lineSize, stdin);
-        line[charCount REMOVE_NEWLINE] = REPLACE_NEWLINE;  // Remove newline
+        line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;  // Remove newline
         sprintf(buffer, "%s", line);
         if(charCount > CHECK_LINE_SIZE) {
             if(connectionClosed) {
@@ -126,7 +126,8 @@ int initClientSocket(const char *ip, const char *port) {
         close(socketFD);
         return EXIT_FAILURE;
     }
-    const int result = connect(socketFD, (struct sockaddr *)&address,sizeof(address));
+    const int result = connect(socketFD,
+        (struct sockaddr *)&address,sizeof(address));
     if(result == SOCKET_INIT_ERROR) {
         printf("connection was successful\n");
     }
@@ -137,6 +138,10 @@ int initClientSocket(const char *ip, const char *port) {
     }
     return socketFD;
 }
+
+/*
+ * main func runs the client and other functions
+ */
 
 int main(const int argc, char * argv[])
 {
