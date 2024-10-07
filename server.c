@@ -1,3 +1,7 @@
+/*
+* Ido Kantor
+ * Server for the game handles two clients at the same time
+ */
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
