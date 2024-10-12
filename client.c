@@ -2,7 +2,6 @@
  * Ido Kantor
  * Client for game sends and receives messages from other clients
  */
-#include <unistd.h>
 #include <pthread.h>
 #include "cryptography_game_util.h"
 
