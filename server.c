@@ -260,17 +260,15 @@ int initServerSocket(const int port) {
         return EXIT_FAILURE;
     }
     struct sockaddr_in server_address;
-    const int correct_ip = createIPv4Address(SERVER_IP,
-        port, &server_address);
-    if(correct_ip == SOCKET_INIT_ERROR) {
+    if(createIPv4Address(SERVER_IP, port, &server_address) ==
+        SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
     fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
-    const int result = bind(serverSocketFD,
-        (struct sockaddr *)&server_address, sizeof(server_address));
-    if(result == SOCKET_INIT_ERROR) {
+    if(bind(serverSocketFD, (struct sockaddr *)&server_address,
+        sizeof(server_address)) == SOCKET_INIT_ERROR) {
         printf("socket was bound successfully\n");
     }
     else {
@@ -278,8 +276,7 @@ int initServerSocket(const int port) {
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
-    const int listenResult = listen(serverSocketFD,LISTEN);
-    if (listenResult == SOCKET_INIT_ERROR) {
+    if (listen(serverSocketFD,LISTEN) == SOCKET_INIT_ERROR) {
         printf("listen successful\n");
     }
     else {

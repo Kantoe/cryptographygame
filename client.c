@@ -70,11 +70,13 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     size_t lineSize = 0;
     printf("send a message\n");
     while(!connectionClosed) {
-        char buffer[BUFFER_SIZE];
         const ssize_t charCount = getline(&line, &lineSize, stdin);
-        line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;  // Remove newline
-        sprintf(buffer, "%s", line);
         if(charCount > CHECK_LINE_SIZE) {
+            char buffer[BUFFER_SIZE];
+            line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;  // Remove newline
+            if(charCount <= BUFFER_SIZE) {
+                sprintf(buffer, "%s", line);
+            }
             if(connectionClosed) {
                 break;
             }
@@ -123,15 +125,14 @@ int initClientSocket(const char *ip, const char *port) {
         return EXIT_FAILURE;
     }
     struct sockaddr_in address;
-    const int correct_ip = createIPv4Address(ip, atoi(port), &address);
-    if(correct_ip == SOCKET_INIT_ERROR) {
+    createIPv4Address(ip, atoi(port), &address);
+    if(createIPv4Address(ip, atoi(port), &address) == SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
         close(socketFD);
         return EXIT_FAILURE;
     }
-    const int result = connect(socketFD,
-        (struct sockaddr *)&address,sizeof(address));
-    if(result == SOCKET_INIT_ERROR) {
+    if(connect(socketFD, (struct sockaddr *)&address,sizeof(address))
+        == SOCKET_INIT_ERROR) {
         printf("connection was successful\n");
     }
     else {
