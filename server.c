@@ -183,7 +183,6 @@ void * receiveAndPrintIncomingData(void * arg)
         if(amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
             printf("%s\n",buffer);
-
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
         }
         if(amountReceived == CHECK_RECEIVE || stop) {
@@ -293,12 +292,13 @@ int initServerSocket(const int port) {
 
 int main(const int argc, char *argv[]) {
     signal(SIGINT, handle_signal);
-    if(argc != CORRECT_ARGC)
+    /*if(argc != CORRECT_ARGC)
     {
         printf("incorrect number of arguments\n");
         return EXIT_FAILURE;
-    }
-    const int serverSocketFD = initServerSocket(atoi(argv[PORT_ARGV]));
+    }*/
+    //const int serverSocketFD = initServerSocket(atoi(argv[PORT_ARGV]));
+    const int serverSocketFD = initServerSocket(2000);
     if(serverSocketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }

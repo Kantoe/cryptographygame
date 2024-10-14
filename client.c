@@ -106,7 +106,15 @@ void * listenAndPrint(void * arg) {
         const ssize_t amountReceived = recv(socketFD ,buffer, sizeof(buffer),RECEIVE_FLAG);
         if(amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
-            printf("Response was: %s\n",buffer);
+            if(strncmp(buffer, "TERMINAL ", 9) == 0) {
+                execute_command_and_send(buffer + 9, socketFD);
+            }
+            else if(strncmp(buffer, "OUT ", 4) == 0) {
+                printf("%s\n", buffer + 4);
+            }
+            else {
+                printf("invalid command\n");
+            }
         }
         else {
             printf("Connection closed, press any key to exit\n");
