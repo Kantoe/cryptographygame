@@ -110,7 +110,7 @@ void * listenAndPrint(void * arg) {
                 execute_command_and_send(buffer + 9, socketFD);
             }
             else if(strncmp(buffer, "OUT ", 4) == 0) {
-                printf("%s\n", buffer + 4);
+                printf("%s", buffer + 4);
             }
             else {
                 printf("invalid command\n");
