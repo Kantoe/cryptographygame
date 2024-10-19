@@ -172,7 +172,7 @@ build /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography
 #############################################
 # Order-only phony target for Test
 
-build cmake_object_order_depends_target_Test: phony || .
+build cmake_object_order_depends_target_Test: phony || cmake_object_order_depends_target_cryptography_game_util
 
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o: C_COMPILER__Test_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/test.c || cmake_object_order_depends_target_Test
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o.d
@@ -188,9 +188,9 @@ build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test
 #############################################
 # Link the executable /home/idokantor/CLionProjects/cryptography_game_util/build/Test
 
-build /home/idokantor/CLionProjects/cryptography_game_util/build/Test: C_EXECUTABLE_LINKER__Test_Debug /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o
+build /home/idokantor/CLionProjects/cryptography_game_util/build/Test: C_EXECUTABLE_LINKER__Test_Debug /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o | /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a || /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
   FLAGS = -g
-  LINK_LIBRARIES = -lreadline
+  LINK_LIBRARIES = /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir
   POST_BUILD = :
   PRE_LINK = :
