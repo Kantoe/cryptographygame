@@ -60,6 +60,13 @@
 			]
 		}
 	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "cryptography_game_util::@27bcafd08510023a8fc6"
+		}
+	],
 	"id" : "Test::@27bcafd08510023a8fc6",
 	"link" : 
 	{
@@ -75,7 +82,7 @@
 			},
 			{
 				"backtrace" : 2,
-				"fragment" : "-lreadline",
+				"fragment" : "/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a",
 				"role" : "libraries"
 			}
 		],
