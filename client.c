@@ -112,7 +112,6 @@ void * listenAndPrint(void * arg) {
             const int check = parse_received_packets(buffer, data, type,
                     length, strlen(buffer), sizeof(length),
                     sizeof(data), sizeof(type));
-
         }
         else {
             printf("Connection closed, press any key to exit\n");
