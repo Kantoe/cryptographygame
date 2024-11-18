@@ -15,7 +15,7 @@
 #define CHECK_RECEIVE 0
 #define NULL_CHAR 0
 #define TRUE 1
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 #define CHECK_LINE_SIZE 0
 #define CHECK_EXIT 0
 #define CHECK_SEND -1

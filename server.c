@@ -23,7 +23,7 @@
 #define SEND_FLAG 0
 #define SLEEP 100000
 #define PTHREAD_CREATE 1
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 #define RECEIVE_FLAG 0
 #define CHECK_RECEIVE 0
 #define NULL_CHAR 0
@@ -290,7 +290,7 @@ int initServerSocket(const int port) {
     fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
     // Bind the socket to the specified address and port
     if (bind(serverSocketFD, (struct sockaddr *)&server_address, sizeof(server_address)) == SOCKET_INIT_ERROR) {
-        printf("Socket bound successfully\n"); // Note: This seems like an error in the original code
+        printf("Socket bound successfully\n");
     } else {
         printf("Socket binding failed\n");
         close(serverSocketFD);
