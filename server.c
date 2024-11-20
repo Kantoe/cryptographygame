@@ -172,8 +172,8 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             pthread_mutex_unlock(&globals_mutex);
             // Handle connection when server is at capacity
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
-            send(clientSocketFD, CLIENT_MAX,
-                strlen(CLIENT_MAX), SEND_FLAG);
+            s_send(clientSocketFD, CLIENT_MAX,
+                strlen(CLIENT_MAX));
             close(clientSocketFD);
         }
         usleep(SLEEP);
@@ -191,11 +191,11 @@ void receiveAndPrintIncomingDataOnSeparateThread(
 void *receiveAndPrintIncomingData(void *arg) {
     // Get the client socket FD from the argument
     const int clientSocketFD = (intptr_t)arg;
-    char buffer[BUFFER_SIZE];
     // Continuously receive and process messages until the `stop` flag is set
     while (!stop) {
+        char buffer[BUFFER_SIZE] = {0};
         // Receive a message from the client
-        const ssize_t amountReceived = recv(clientSocketFD, buffer, sizeof(buffer), RECEIVE_FLAG);
+        const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
         // If a message was received successfully
         if (amountReceived > CHECK_RECEIVE) {
             // Null-terminate the received message
@@ -222,7 +222,7 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD
     for (int i = 0; i < acceptedSocketsCount; i++) {
         // Send the message to all clients except the sender
         if (acceptedSockets[i].acceptedSocketFD != socketFD) {
-            send(acceptedSockets[i].acceptedSocketFD, buffer, strlen(buffer), SEND_FLAG);
+            s_send(acceptedSockets[i].acceptedSocketFD, buffer, strlen(buffer));
         }
     }
     // Release the global mutex

@@ -94,16 +94,14 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     // Main loop for reading and sending messages
     while(!connectionClosed) {
         const ssize_t charCount = getline(&line, &lineSize, stdin);
-
         // Process input only if valid characters were read
         if(charCount > CHECK_LINE_SIZE) {
-            char buffer[BUFFER_SIZE];
+            char buffer[BUFFER_SIZE] = {0};
             // Remove trailing newline and prepare the message
             line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;
             if(charCount <= BUFFER_SIZE) {
                 sprintf(buffer, "%s", line);
             }
-
             // Check for connection status and exit command
             if(connectionClosed) {
                 break;
@@ -111,10 +109,9 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
             if(strcmp(line, "exit") == CHECK_EXIT) {
                 break;
             }
-
             // Prepare and send the message to server
             prepare_buffer(buffer, sizeof(buffer), line, "CMD");
-            const ssize_t send_check = send(socketFD, buffer, strlen(buffer), SEND_FLAG);
+            const ssize_t send_check = s_send(socketFD, buffer, strlen(buffer));
             if(send_check == CHECK_SEND) {
                 printf("send failed, Connection closed\n");
                 break;
@@ -169,11 +166,10 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
 
 void * listenAndPrint(void * arg) {
     const int socketFD = (intptr_t)arg;
-    char buffer[BUFFER_SIZE];
-
     // Continuous listening loop for server messages
     while(TRUE) {
-        const ssize_t amountReceived = recv(socketFD ,buffer, sizeof(buffer),RECEIVE_FLAG);
+        char buffer[BUFFER_SIZE] = {0};
+        const ssize_t amountReceived = s_recv(socketFD ,buffer, sizeof(buffer));
         // Initialize buffers for message parsing
         char data [1024] = {0};
         char type [1024] = {0};
