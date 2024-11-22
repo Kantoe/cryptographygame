@@ -28,6 +28,8 @@
 
 //globals
 volatile int connectionClosed = 0;
+char my_cwd [1024] = {0};
+char command_cwd [1024] = {0};
 
 //prototypes
 
@@ -91,6 +93,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     size_t lineSize = 0;
     // Main loop for reading and sending messages
     while(!connectionClosed) {
+        printf("%s$ ", my_cwd);
         const ssize_t charCount = getline(&line, &lineSize, stdin);
         // Process input only if valid characters were read
         if(charCount > CHECK_LINE_SIZE) {
@@ -115,6 +118,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
                 break;
             }
         }
+        usleep(10000);
     }
     free(line);  //Free the memory allocated by getLine func
 }
@@ -145,11 +149,16 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
                 strncpy(command, current_data, n);
                 command[n] = 0;
             }
-            execute_command_and_send(command, sizeof(command), socketFD);
+            execute_command_and_send(command, sizeof(command), socketFD,
+                command_cwd, sizeof(command_cwd));
             free(command);
         }
         else if (strcmp(current_type, "ERR") == 0) {
             printf("%.*s", n, current_data);
+        }
+        else if (strcmp(current_type, "CWD") == 0) {
+            memset(my_cwd, 0, sizeof(my_cwd));
+            strncpy(my_cwd, current_data, n);
         }
         // Move to next message segment
         current_data += n;
@@ -181,7 +190,7 @@ void * listenAndPrint(void * arg) {
         }
         else {
             // Handle connection closure
-            printf("Connection closed, press any key to exit\n");
+            printf("\nConnection closed, press any key to exit\n");
             connectionClosed = 1;
             break;
         }
@@ -243,6 +252,8 @@ int main(const int argc, char * argv[])
     if(socketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
+    strcpy(my_cwd, "/home");
+    strcpy(command_cwd, "/home");
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     readConsoleEntriesAndSendToServer(socketFD);
