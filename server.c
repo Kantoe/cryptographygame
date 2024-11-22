@@ -15,7 +15,7 @@
 //defines
 #define CORRECT_ARGC 2
 #define SERVER_IP "0.0.0.0"
-#define CLIENT_MAX "tlength:60;type:ERR;length:25;data:max 2 clients can connect"
+#define CLIENT_MAX "tlength:61;type:ERR;length:26;data:max 2 clients can connect\n"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1

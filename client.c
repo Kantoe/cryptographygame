@@ -89,8 +89,6 @@ void process_received_data(int socketFD, char data[1024], char type[1024], char 
 void readConsoleEntriesAndSendToServer(const int socketFD) {
     char *line = NULL;
     size_t lineSize = 0;
-    printf("send a message\n");
-
     // Main loop for reading and sending messages
     while(!connectionClosed) {
         const ssize_t charCount = getline(&line, &lineSize, stdin);
@@ -130,15 +128,12 @@ void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024]) {
     char *current_data = data;
     char *type_context, *length_context;
-
     // Initialize tokenization of message type and length
     const char *current_type = strtok_r(type, ";", &type_context);
     const char *current_length = strtok_r(length, ";", &length_context);
-
     // Process each message segment
     while (current_length != NULL && current_type != NULL) {
         const int n = atoi(current_length);
-
         // Handle different message types (OUT, CMD, ERR)
         if (strcmp(current_type, "OUT") == 0) {
             printf("%.*s", n, current_data);
@@ -156,7 +151,6 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
         else if (strcmp(current_type, "ERR") == 0) {
             printf("%.*s", n, current_data);
         }
-
         // Move to next message segment
         current_data += n;
         current_type = strtok_r(NULL, ";", &type_context);
@@ -174,7 +168,6 @@ void * listenAndPrint(void * arg) {
         char data [1024] = {0};
         char type [1024] = {0};
         char length [1024] = {0};
-
         // Process received data if valid
         if(amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
@@ -204,7 +197,6 @@ int initClientSocket(const char *ip, const char *port) {
         printf("failed to create socket\n");
         return EXIT_FAILURE;
     }
-
     // Set up server address structure
     struct sockaddr_in address;
     createIPv4Address(ip, atoi(port), &address);
@@ -213,7 +205,6 @@ int initClientSocket(const char *ip, const char *port) {
         close(socketFD);
         return EXIT_FAILURE;
     }
-
     // Attempt connection to server
     if(connect(socketFD, (struct sockaddr *)&address,sizeof(address))
         == SOCKET_INIT_ERROR) {
@@ -247,13 +238,11 @@ int main(const int argc, char * argv[])
         printf("incorrect number of arguments\n");
         return EXIT_FAILURE;
     }
-
     // Initialize socket and start client
     const int socketFD = initClientSocket(argv[IP_ARGV], argv[PORT_ARGV]);
     if(socketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
-
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     readConsoleEntriesAndSendToServer(socketFD);
