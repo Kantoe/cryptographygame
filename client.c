@@ -6,6 +6,7 @@
  */
 
 #include <pthread.h>
+#include <stdbool.h>
 #include "cryptography_game_util.h"
 
 //defines
@@ -30,6 +31,10 @@
 volatile int connectionClosed = 0;
 char my_cwd [1024] = {0};
 char command_cwd [1024] = {0};
+pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
+volatile bool ready_to_print = true;
 
 //prototypes
 
@@ -93,7 +98,16 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     size_t lineSize = 0;
     // Main loop for reading and sending messages
     while(!connectionClosed) {
+        // Wait until allowed to print
+        pthread_mutex_lock(&sync_mutex);
+        while(!ready_to_print) {
+            pthread_cond_wait(&sync_cond, &sync_mutex);
+        }
+        ready_to_print = false; // Reset the flag
+        pthread_mutex_unlock(&sync_mutex);
+        pthread_mutex_lock(&cwd_mutex);
         printf("%s$ ", my_cwd);
+        pthread_mutex_unlock(&cwd_mutex);
         const ssize_t charCount = getline(&line, &lineSize, stdin);
         // Process input only if valid characters were read
         if(charCount > CHECK_LINE_SIZE) {
@@ -118,7 +132,6 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
                 break;
             }
         }
-        usleep(10000);
     }
     free(line);  //Free the memory allocated by getLine func
 }
@@ -149,16 +162,20 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
                 strncpy(command, current_data, n);
                 command[n] = 0;
             }
+            pthread_mutex_lock(&cwd_mutex);
             execute_command_and_send(command, sizeof(command), socketFD,
                 command_cwd, sizeof(command_cwd));
+            pthread_mutex_unlock(&cwd_mutex);
             free(command);
         }
         else if (strcmp(current_type, "ERR") == 0) {
             printf("%.*s", n, current_data);
         }
         else if (strcmp(current_type, "CWD") == 0) {
+            pthread_mutex_lock(&cwd_mutex);
             memset(my_cwd, 0, sizeof(my_cwd));
             strncpy(my_cwd, current_data, n);
+            pthread_mutex_unlock(&cwd_mutex);
         }
         // Move to next message segment
         current_data += n;
@@ -194,6 +211,10 @@ void * listenAndPrint(void * arg) {
             connectionClosed = 1;
             break;
         }
+        pthread_mutex_lock(&sync_mutex);
+        ready_to_print = true;
+        pthread_cond_signal(&sync_cond);
+        pthread_mutex_unlock(&sync_mutex);
     }
     close(socketFD);
     return NULL;
@@ -257,6 +278,9 @@ int main(const int argc, char * argv[])
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     readConsoleEntriesAndSendToServer(socketFD);
+    pthread_mutex_destroy(&cwd_mutex);
+    pthread_mutex_destroy(&sync_mutex);
+    pthread_cond_destroy(&sync_cond);
     close(socketFD);
     return 0;
 }
