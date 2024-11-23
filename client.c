@@ -6,7 +6,6 @@
  */
 
 #include <pthread.h>
-#include <stdbool.h>
 #include "cryptography_game_util.h"
 
 //defines

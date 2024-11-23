@@ -16,6 +16,7 @@
 #define CORRECT_ARGC 2
 #define SERVER_IP "0.0.0.0"
 #define CLIENT_MAX "tlength:61;type:ERR;length:26;data:max 2 clients can connect\n"
+#define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -31,6 +32,9 @@
 #define CLIENT_THREAD_EXISTS 0
 #define CLIENT_SOCKET_EXISTS 0
 #define LISTEN 1
+#define CMD_TYPE_LENGTH 3
+#define TYPE_OFFSET 5
+#define DATA_CMD_CHECK "CMD"
 
 //data types
 struct AcceptedSocket {
@@ -147,20 +151,20 @@ void cleanupClientSockets(int count);
 int initServerSocket(int port);
 
 void startAcceptingIncomingConnections(const int serverSocketFD) {
-    // Main server loop for accepting connections
     while(!stop)
     {
-        // Lock mutex to safely check client count
+        // Lock mutex before checking client count
         pthread_mutex_lock(&globals_mutex);
         if(acceptedSocketsCount < MAX_CLIENTS)
         {
+            // Unlock mutex before accepting new connection
             pthread_mutex_unlock(&globals_mutex);
-            // Accept new client connection
             struct AcceptedSocket clientSocket =
                 acceptIncomingConnection(serverSocketFD);
 
-            // If connection was successful, add to active clients
+            // If connection accepted successfully, add to active clients
             if(clientSocket.acceptedSuccessfully) {
+                // Lock mutex before updating shared data
                 pthread_mutex_lock(&globals_mutex);
                 acceptedSockets[acceptedSocketsCount++] = clientSocket;
                 receiveAndPrintIncomingDataOnSeparateThread(&clientSocket);
@@ -169,85 +173,109 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
         }
         else
         {
+            // Server at capacity, reject new connection
             pthread_mutex_unlock(&globals_mutex);
-            // Handle connection when server is at capacity
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
+            // Send max clients error message
             s_send(clientSocketFD, CLIENT_MAX,
                 strlen(CLIENT_MAX));
             close(clientSocketFD);
         }
+        // Sleep to prevent CPU overload
         usleep(SLEEP);
     }
 }
 
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
-    // Create new thread for handling client communication
+    // Create new thread and pass socket FD as argument
     pthread_create(&clientThreads[acceptedSocketsCount - PTHREAD_CREATE],
         NULL, receiveAndPrintIncomingData,
         (void *)(intptr_t)clientSocketFD->acceptedSocketFD);
 }
 
 void *receiveAndPrintIncomingData(void *arg) {
-    // Get the client socket FD from the argument
+    // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t)arg;
-    // Continuously receive and process messages until the `stop` flag is set
     while (!stop) {
+        // Initialize buffer for incoming message
         char buffer[BUFFER_SIZE] = {0};
-        // Receive a message from the client
+        // Receive data from client
         const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
-        // If a message was received successfully
+
         if (amountReceived > CHECK_RECEIVE) {
-            // Null-terminate the received message
+            int valid_data_check = 1;
+            // Null terminate received message
             buffer[amountReceived] = NULL_CHAR;
-            // Print the message to the console
+            // Log received message
             printf("%s\n", buffer);
-            // Broadcast the message to all other connected clients
-            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+
+            // Check if message is a command type
+            if(strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) == 0) {
+                // Validate command data
+                valid_data_check = check_command_data(strstr(buffer, "data:") + TYPE_OFFSET);
+            }
+
+            if(valid_data_check) {
+                // Broadcast valid message to other clients
+                sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+            }
+            else {
+                // Send error for invalid command
+                s_send(clientSocketFD, INVALID_DATA,
+                strlen(INVALID_DATA));
+            }
         }
-        // If the connection is closed or the `stop` flag is set, exit the loop
+        // Exit if connection closed or server stopping
         if (amountReceived == CHECK_RECEIVE || stop) {
             break;
         }
     }
-    // Close the client socket
+    // Cleanup client socket
     close(clientSocketFD);
     return NULL;
 }
 
 void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD) {
-    // Acquire the global mutex to ensure thread safety
+    // Lock mutex before accessing shared client data
     pthread_mutex_lock(&globals_mutex);
+
     // Iterate through all connected clients
     for (int i = 0; i < acceptedSocketsCount; i++) {
-        // Send the message to all clients except the sender
+        // Skip sender's socket
         if (acceptedSockets[i].acceptedSocketFD != socketFD) {
+            // Forward message to other client
             s_send(acceptedSockets[i].acceptedSocketFD, buffer, strlen(buffer));
         }
     }
-    // Release the global mutex
+
+    // Release mutex after broadcasting
     pthread_mutex_unlock(&globals_mutex);
 }
 
 struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
-    // Initialize a new `AcceptedSocket` structure
+    // Initialize socket structure
     struct AcceptedSocket acceptedSocket = {0};
-    // Accept an incoming connection
     struct sockaddr_in clientAddress;
     int clientAddressSize = sizeof(struct sockaddr_in);
-    const int clientSocketFD = accept(serverSocketFD, (struct sockaddr*)&clientAddress, (socklen_t *)&clientAddressSize);
-    // Populate the `AcceptedSocket` structure with information about the new connection
+
+    // Accept new connection
+    const int clientSocketFD = accept(serverSocketFD, (struct sockaddr*)&clientAddress,
+        (socklen_t *)&clientAddressSize);
+
+    // Set socket information
     acceptedSocket.address = clientAddress;
     acceptedSocket.acceptedSocketFD = clientSocketFD;
     acceptedSocket.acceptedSuccessfully = clientSocketFD > ACCEPTED_SUCCESSFULLY;
     acceptedSocket.error = clientSocketFD < ACCEPTED_SUCCESSFULLY ? clientSocketFD : ACCEPTED_SUCCESSFULLY;
+
     return acceptedSocket;
 }
 
 void cleanupThreads(const int count) {
     // Iterate through all client threads
     for (int i = 0; i < count; i++) {
-        // If the thread is active, cancel and join it
+        // Cancel and join active threads
         if (clientThreads[i] != CLIENT_THREAD_EXISTS) {
             pthread_cancel(clientThreads[i]);
             pthread_join(clientThreads[i], NULL);
@@ -256,9 +284,9 @@ void cleanupThreads(const int count) {
 }
 
 void cleanupClientSockets(const int count) {
-    // Iterate through all accepted sockets
+    // Iterate through all client sockets
     for (int i = 0; i < count; i++) {
-        // If the socket is valid, close it
+        // Close active sockets
         if (acceptedSockets[i].acceptedSocketFD > CLIENT_SOCKET_EXISTS) {
             close(acceptedSockets[i].acceptedSocketFD);
         }
@@ -273,22 +301,25 @@ void handle_signal(const int signal) {
 }
 
 int initServerSocket(const int port) {
-    // Create a TCP/IP socket
+    // Create server socket
     const int serverSocketFD = createTCPIpv4Socket();
     if (serverSocketFD == SOCKET_ERROR) {
         printf("Error creating server socket\n");
         return EXIT_FAILURE;
     }
-    // Set up the server address structure
+
+    // Configure server address
     struct sockaddr_in server_address;
     if (createIPv4Address(SERVER_IP, port, &server_address) == SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
-    // Set the socket to non-blocking mode
+
+    // Set socket to non-blocking mode
     fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
-    // Bind the socket to the specified address and port
+
+    // Bind socket to address and port
     if (bind(serverSocketFD, (struct sockaddr *)&server_address, sizeof(server_address)) == SOCKET_INIT_ERROR) {
         printf("Socket bound successfully\n");
     } else {
@@ -296,12 +327,14 @@ int initServerSocket(const int port) {
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
-    // Listen for incoming connections
+
+    // Start listening for connections
     if (listen(serverSocketFD, LISTEN) != SOCKET_INIT_ERROR) {
         printf("Listening failed\n");
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
+
     return serverSocketFD;
 }
 
@@ -319,27 +352,30 @@ int initServerSocket(const int port) {
  */
 
 int main(const int argc, char *argv[]) {
-    // Set up a signal handler for SIGINT
+    // Set up signal handler
     signal(SIGINT, handle_signal);
-    // Check for correct number of command-line arguments
+
+    // Validate command line arguments
     if (argc != CORRECT_ARGC) {
         printf("Incorrect number of arguments\n");
         return EXIT_FAILURE;
     }
-    // Initialize the server socket
+
+    // Initialize server
     const int serverSocketFD = initServerSocket(atoi(argv[PORT_ARGV]));
     if (serverSocketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
-    // Start accepting incoming connections
+
+    // Start server main loop
     startAcceptingIncomingConnections(serverSocketFD);
-    // Clean up threads and sockets
+
+    // Cleanup resources
     cleanupThreads(acceptedSocketsCount);
     cleanupClientSockets(acceptedSocketsCount);
-    // Close the server socket
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
-    // Destroy the global mutex
     pthread_mutex_destroy(&globals_mutex);
+
     return 0;
 }
