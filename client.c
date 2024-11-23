@@ -28,8 +28,8 @@
 
 //globals
 volatile int connectionClosed = 0;
-char my_cwd [1024] = {0};
-char command_cwd [1024] = {0};
+char my_cwd[1024] = {0};
+char command_cwd[1024] = {0};
 pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
@@ -52,7 +52,7 @@ void startListeningAndPrintMessagesOnNewThread(int socketFD);
  * Parameters: arg - A pointer to the socket file descriptor cast to void*.
  * Returns: NULL upon completion.
  */
-void * listenAndPrint(void * arg);
+void *listenAndPrint(void *arg);
 
 /*
  * Reads user input from the console and sends it to the server.
@@ -91,55 +91,111 @@ int initClientSocket(const char *ip, const char *port);
  */
 void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024]);
 
+/*
+* Synchronizes console output using thread synchronization primitives.
+* This function uses mutex locks and condition variables to ensure
+* thread-safe console output. It waits for the ready_to_print signal,
+* then prints the current working directory prompt. Used to coordinate
+* output between multiple threads.
+* Parameters: None
+* Returns: None
+*/
+void wait_for_print(void);
+
+/*
+* Processes received data from the server based on message type.
+* Handles four different message types:
+*   - OUT: Displays standard output to console
+*   - CMD: Executes command and sends results back
+*   - ERR: Displays error messages to console
+*   - CWD: Updates current working directory
+* Uses thread-safe operations for directory and command handling.
+* Parameters:
+*   socketFD - Socket file descriptor for communication
+*   current_data - The message data to process
+*   current_type - Type identifier of the message (OUT/CMD/ERR/CWD)
+*   n - Length of the current data to process
+* Returns: None
+*/
+void process_message_type(int socketFD, char *current_data, const char *current_type, int n);
+
+void wait_for_print(void) {
+    // Wait until allowed to print
+    pthread_mutex_lock(&sync_mutex);
+    while (!ready_to_print) {
+        pthread_cond_wait(&sync_cond, &sync_mutex);
+    }
+    ready_to_print = false; // Reset the flag
+    pthread_mutex_unlock(&sync_mutex);
+    pthread_mutex_lock(&cwd_mutex);
+    printf("%s$ ", my_cwd);
+    pthread_mutex_unlock(&cwd_mutex);
+}
 
 void readConsoleEntriesAndSendToServer(const int socketFD) {
     char *line = NULL;
     size_t lineSize = 0;
     // Main loop for reading and sending messages
-    while(!connectionClosed) {
-        // Wait until allowed to print
-        pthread_mutex_lock(&sync_mutex);
-        while(!ready_to_print) {
-            pthread_cond_wait(&sync_cond, &sync_mutex);
-        }
-        ready_to_print = false; // Reset the flag
-        pthread_mutex_unlock(&sync_mutex);
-        pthread_mutex_lock(&cwd_mutex);
-        printf("%s$ ", my_cwd);
-        pthread_mutex_unlock(&cwd_mutex);
+    while (!connectionClosed) {
+        wait_for_print();
         const ssize_t charCount = getline(&line, &lineSize, stdin);
         // Process input only if valid characters were read
-        if(charCount > CHECK_LINE_SIZE) {
+        if (charCount > CHECK_LINE_SIZE) {
             char buffer[BUFFER_SIZE] = {0};
             // Remove trailing newline and prepare the message
             line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;
-            if(charCount <= BUFFER_SIZE) {
+            if (charCount <= BUFFER_SIZE) {
                 sprintf(buffer, "%s", line);
             }
             // Check for connection status and exit command
-            if(connectionClosed) {
+            if (connectionClosed) {
                 break;
             }
-            if(strcmp(line, "exit") == CHECK_EXIT) {
+            if (strcmp(line, "exit") == CHECK_EXIT) {
                 break;
             }
             // Prepare and send the message to server
             prepare_buffer(buffer, sizeof(buffer), line, "CMD");
             const ssize_t send_check = s_send(socketFD, buffer, strlen(buffer));
-            if(send_check == CHECK_SEND) {
+            if (send_check == CHECK_SEND) {
                 printf("send failed, Connection closed\n");
                 break;
             }
         }
         usleep(100000);
     }
-    free(line);  //Free the memory allocated by getLine func
+    free(line); //Free the memory allocated by getLine func
 }
 
 void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
     pthread_t id;
     // Create new thread for message listening
-    pthread_create(&id, NULL, listenAndPrint, (void *)(intptr_t)socketFD);
+    pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
+}
+
+void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n) {
+    if (strcmp(current_type, "OUT") == 0) {
+        printf("%.*s", n, current_data);
+    } else if (strcmp(current_type, "CMD") == 0) {
+        // Allocate memory for command and process it
+        char *command = malloc(n + 1);
+        if (command != NULL) {
+            strncpy(command, current_data, n);
+            command[n] = 0;
+        }
+        pthread_mutex_lock(&cwd_mutex);
+        execute_command_and_send(command, sizeof(command), socketFD,
+                                 command_cwd, sizeof(command_cwd));
+        pthread_mutex_unlock(&cwd_mutex);
+        free(command);
+    } else if (strcmp(current_type, "ERR") == 0) {
+        printf("%.*s", n, current_data);
+    } else if (strcmp(current_type, "CWD") == 0) {
+        pthread_mutex_lock(&cwd_mutex);
+        memset(my_cwd, 0, sizeof(my_cwd));
+        strncpy(my_cwd, current_data, n);
+        pthread_mutex_unlock(&cwd_mutex);
+    }
 }
 
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024]) {
@@ -152,31 +208,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     while (current_length != NULL && current_type != NULL) {
         const int n = atoi(current_length);
         // Handle different message types (OUT, CMD, ERR)
-        if (strcmp(current_type, "OUT") == 0) {
-            printf("%.*s", n, current_data);
-        }
-        else if (strcmp(current_type, "CMD") == 0) {
-            // Allocate memory for command and process it
-            char *command = malloc(n + 1);
-            if (command != NULL) {
-                strncpy(command, current_data, n);
-                command[n] = 0;
-            }
-            pthread_mutex_lock(&cwd_mutex);
-            execute_command_and_send(command, sizeof(command), socketFD,
-                command_cwd, sizeof(command_cwd));
-            pthread_mutex_unlock(&cwd_mutex);
-            free(command);
-        }
-        else if (strcmp(current_type, "ERR") == 0) {
-            printf("%.*s", n, current_data);
-        }
-        else if (strcmp(current_type, "CWD") == 0) {
-            pthread_mutex_lock(&cwd_mutex);
-            memset(my_cwd, 0, sizeof(my_cwd));
-            strncpy(my_cwd, current_data, n);
-            pthread_mutex_unlock(&cwd_mutex);
-        }
+        process_message_type(socketFD, current_data, current_type, n);
         // Move to next message segment
         current_data += n;
         current_type = strtok_r(NULL, ";", &type_context);
@@ -184,28 +216,27 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     }
 }
 
-void * listenAndPrint(void * arg) {
-    const int socketFD = (intptr_t)arg;
+void *listenAndPrint(void *arg) {
+    const int socketFD = (intptr_t) arg;
     // Continuous listening loop for server messages
-    while(TRUE) {
+    while (TRUE) {
         char buffer[BUFFER_SIZE] = {0};
-        const ssize_t amountReceived = s_recv(socketFD ,buffer, sizeof(buffer));
+        const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer));
         // Initialize buffers for message parsing
-        char data [1024] = {0};
-        char type [1024] = {0};
-        char length [1024] = {0};
+        char data[1024] = {0};
+        char type[1024] = {0};
+        char length[1024] = {0};
         // Process received data if valid
-        if(amountReceived > CHECK_RECEIVE) {
+        if (amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
             // Parse and process the received packet
             const int check = parse_received_packets(buffer, data, type,
-                    length, strlen(buffer), sizeof(length),
-                    sizeof(data), sizeof(type));
-            if(check) {
+                                                     length, strlen(buffer), sizeof(length),
+                                                     sizeof(data), sizeof(type));
+            if (check) {
                 process_received_data(socketFD, data, type, length);
             }
-        }
-        else {
+        } else {
             // Handle connection closure
             printf("\nConnection closed, press any key to exit\n");
             connectionClosed = 1;
@@ -223,24 +254,23 @@ void * listenAndPrint(void * arg) {
 int initClientSocket(const char *ip, const char *port) {
     // Create TCP/IPv4 socket
     const int socketFD = createTCPIpv4Socket();
-    if(socketFD == SOCKET_ERROR) {
+    if (socketFD == SOCKET_ERROR) {
         printf("failed to create socket\n");
         return EXIT_FAILURE;
     }
     // Set up server address structure
     struct sockaddr_in address;
     createIPv4Address(ip, atoi(port), &address);
-    if(createIPv4Address(ip, atoi(port), &address) == SOCKET_INIT_ERROR) {
+    if (createIPv4Address(ip, atoi(port), &address) == SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
         close(socketFD);
         return EXIT_FAILURE;
     }
     // Attempt connection to server
-    if(connect(socketFD, (struct sockaddr *)&address,sizeof(address))
+    if (connect(socketFD, (struct sockaddr *) &address, sizeof(address))
         == SOCKET_INIT_ERROR) {
         printf("connection was successful\n");
-    }
-    else {
+    } else {
         printf("connection to server failed\n");
         close(socketFD);
         return EXIT_FAILURE;
@@ -261,16 +291,15 @@ int initClientSocket(const char *ip, const char *port) {
  *   EXIT_FAILURE if incorrect arguments or connection fails
  */
 
-int main(const int argc, char * argv[])
-{
+int main(const int argc, char *argv[]) {
     // Validate command line arguments
-    if(argc != CORRECT_ARGC) {
+    if (argc != CORRECT_ARGC) {
         printf("incorrect number of arguments\n");
         return EXIT_FAILURE;
     }
     // Initialize socket and start client
     const int socketFD = initClientSocket(argv[IP_ARGV], argv[PORT_ARGV]);
-    if(socketFD == EXIT_FAILURE) {
+    if (socketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
     strcpy(my_cwd, "/home");
