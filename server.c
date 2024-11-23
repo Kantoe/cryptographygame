@@ -157,7 +157,22 @@ int initServerSocket(int port);
  * received message is sent to other client.
  * Returns: None.
  */
+
 void check_message_received(int clientSocketFD, char buffer[4096]);
+
+/*
+ * creates server socket and address for it.
+ * returns 1 for failure 0 for success.
+ */
+
+int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_address);
+
+/*
+ * binds server socket to an address
+ * listens on that server socket
+ */
+int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
+
 
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop) {
@@ -306,26 +321,22 @@ void handle_signal(const int signal) {
     stop = 1;
 }
 
-int initServerSocket(const int port) {
-    // Create server socket
-    const int serverSocketFD = createTCPIpv4Socket();
-    if (serverSocketFD == SOCKET_ERROR) {
+int config_socket(const int port, int *serverSocketFD, struct sockaddr_in *server_address) {
+    *serverSocketFD = createTCPIpv4Socket();
+    if (*serverSocketFD == SOCKET_ERROR) {
         printf("Error creating server socket\n");
         return EXIT_FAILURE;
     }
 
-    // Configure server address
-    struct sockaddr_in server_address;
-    if (createIPv4Address(SERVER_IP, port, &server_address) == SOCKET_INIT_ERROR) {
+    if (createIPv4Address(SERVER_IP, port, server_address) == SOCKET_INIT_ERROR) {
         printf("Incorrect IP or port\n");
-        close(serverSocketFD);
+        close(*serverSocketFD);
         return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
+}
 
-    // Set socket to non-blocking mode
-    fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
-
-    // Bind socket to address and port
+int bind_and_listen_on_socket(const int serverSocketFD, struct sockaddr_in server_address) {
     if (bind(serverSocketFD, (struct sockaddr *) &server_address, sizeof(server_address)) == SOCKET_INIT_ERROR) {
         printf("Socket bound successfully\n");
     } else {
@@ -340,7 +351,21 @@ int initServerSocket(const int port) {
         close(serverSocketFD);
         return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
+}
 
+int initServerSocket(const int port) {
+    int serverSocketFD;
+    struct sockaddr_in server_address;
+    if (config_socket(port, &serverSocketFD, &server_address)) {
+        return EXIT_FAILURE;
+    }
+    // Set socket to non-blocking mode
+    fcntl(serverSocketFD, F_SETFL, O_NONBLOCK);
+    // Bind socket to address and port
+    if (bind_and_listen_on_socket(serverSocketFD, server_address)) {
+        return EXIT_FAILURE;
+    }
     return serverSocketFD;
 }
 
