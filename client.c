@@ -162,7 +162,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
                 break;
             }
         }
-        usleep(10000);
+        usleep(50000);
     }
     free(line); //Free the memory allocated by getLine func
 }
