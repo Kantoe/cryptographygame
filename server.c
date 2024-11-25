@@ -17,6 +17,7 @@
 #define SERVER_IP "0.0.0.0"
 #define CLIENT_MAX "tlength:61;type:ERR;length:26;data:max 2 clients can connect\n"
 #define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
+#define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -215,6 +216,12 @@ void receiveAndPrintIncomingDataOnSeparateThread(
 }
 
 void check_message_received(const int clientSocketFD, char buffer[4096]) {
+    if(acceptedSocketsCount < MAX_CLIENTS) {
+        pthread_mutex_lock(&globals_mutex);
+        s_send(clientSocketFD, CLIENT_MAX, strlen(CLIENT_MAX));
+        pthread_mutex_unlock(&globals_mutex);
+        return;
+    }
     int valid_data_check = 1;
     // Check if message is a command type
     if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) == 0) {
