@@ -216,9 +216,9 @@ void receiveAndPrintIncomingDataOnSeparateThread(
 }
 
 void check_message_received(const int clientSocketFD, char buffer[4096]) {
-    if(acceptedSocketsCount < MAX_CLIENTS) {
+    if (acceptedSocketsCount < MAX_CLIENTS) {
         pthread_mutex_lock(&globals_mutex);
-        s_send(clientSocketFD, CLIENT_MAX, strlen(CLIENT_MAX));
+        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
         pthread_mutex_unlock(&globals_mutex);
         return;
     }
