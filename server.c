@@ -18,6 +18,7 @@
 #define CLIENT_MAX "tlength:61;type:ERR;length:26;data:max 2 clients can connect\n"
 #define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
 #define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
+#define SECOND_CLIENT_DISCONNECTED "tlength:66;type:ERR;length:31;data:\nSecond client disconnected ):\n"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -47,8 +48,8 @@ struct AcceptedSocket {
 
 //globals
 volatile sig_atomic_t stop = 0;
-struct AcceptedSocket acceptedSockets[MAX_CLIENTS];
-int acceptedSocketsCount = 0;
+struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
+unsigned int acceptedSocketsCount = 0;
 pthread_t clientThreads[MAX_CLIENTS] = {0};
 pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 //Mutex for globals
@@ -189,7 +190,13 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             if (clientSocket.acceptedSuccessfully) {
                 // Lock mutex before updating shared data
                 pthread_mutex_lock(&globals_mutex);
-                acceptedSockets[acceptedSocketsCount++] = clientSocket;
+                for (int i = 0; i < MAX_CLIENTS; i++) {
+                    if (!acceptedSockets[i].acceptedSuccessfully || acceptedSockets[i].acceptedSocketFD == -1) {
+                        acceptedSockets[i] = clientSocket;
+                        acceptedSocketsCount++;
+                        break;
+                    }
+                }
                 receiveAndPrintIncomingDataOnSeparateThread(&clientSocket);
                 pthread_mutex_unlock(&globals_mutex);
             }
@@ -255,9 +262,22 @@ void *receiveAndPrintIncomingData(void *arg) {
             check_message_received(clientSocketFD, buffer);
         }
         // Exit if connection closed or server stopping
-        if (amountReceived == CHECK_RECEIVE || stop) {
+        if (amountReceived <= CHECK_RECEIVE || stop) {
             break;
         }
+    }
+    if (acceptedSocketsCount > 0) {
+        sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
+        pthread_mutex_lock(&globals_mutex);
+        for (int i = 0; i < acceptedSocketsCount; i++) {
+            if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
+                acceptedSockets[i].acceptedSocketFD = -1;
+            }
+        }
+        pthread_mutex_unlock(&globals_mutex);
+        pthread_mutex_lock(&globals_mutex);
+        acceptedSocketsCount--;
+        pthread_mutex_unlock(&globals_mutex);
     }
     // Cleanup client socket
     close(clientSocketFD);

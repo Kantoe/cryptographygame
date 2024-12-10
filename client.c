@@ -25,6 +25,7 @@
 #define SOCKET_INIT_ERROR 0
 #define IP_ARGV 1
 #define PORT_ARGV 2
+#define INIT_COMMAND_DIR "tlength:42;type:CMD;length:8;data:cd /home"
 
 //globals
 volatile int connectionClosed = 0;
@@ -133,6 +134,7 @@ void wait_for_print(void) {
 }
 
 void readConsoleEntriesAndSendToServer(const int socketFD) {
+    s_send(socketFD, INIT_COMMAND_DIR, strlen(INIT_COMMAND_DIR));
     char *line = NULL;
     size_t lineSize = 0;
     // Main loop for reading and sending messages
