@@ -120,6 +120,17 @@ void wait_for_print(void);
 */
 void process_message_type(int socketFD, char *current_data, const char *current_type, int n);
 
+/*
+* Synchronizes console output using thread synchronization primitives.
+* This function uses mutex locks and condition variables to ensure
+* thread-safe console output. It waits for the ready_to_print signal,
+* then prints the current working directory prompt. Used to coordinate
+* output between multiple threads.
+* Parameters: None
+* Returns: None
+*/
+
+
 void wait_for_print(void) {
     // Wait until allowed to print
     pthread_mutex_lock(&sync_mutex);
@@ -133,8 +144,15 @@ void wait_for_print(void) {
     pthread_mutex_unlock(&cwd_mutex);
 }
 
+/*
+ * Reads user input from the console and sends it to the server.
+ * This function handles the main input loop, processes user commands,
+ * and manages the command buffer preparation. It also handles the exit command
+ * and connection closure scenarios.
+ * Parameters: socketFD - The file descriptor for the socket connected to the server.
+ * Returns: None.
+ */
 void readConsoleEntriesAndSendToServer(const int socketFD) {
-    s_send(socketFD, INIT_COMMAND_DIR, strlen(INIT_COMMAND_DIR));
     char *line = NULL;
     size_t lineSize = 0;
     // Main loop for reading and sending messages
@@ -169,12 +187,33 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     free(line); //Free the memory allocated by getLine func
 }
 
+/* Starts a new thread to listen for messages from the server
+ * and print them to the console. This function creates a dedicated thread
+ * that handles all incoming server communications asynchronously,
+ * allowing the main thread to focus on user input.
+ * Parameters: socketFD - The file descriptor for the
+ * socket connected to the server. */
 void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
     pthread_t id;
     // Create new thread for message listening
     pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
 }
 
+/*
+* Processes received data from the server based on message type.
+* Handles four different message types:
+*   - OUT: Displays standard output to console
+*   - CMD: Executes command and sends results back
+*   - ERR: Displays error messages to console
+*   - CWD: Updates current working directory
+* Uses thread-safe operations for directory and command handling.
+* Parameters:
+*   socketFD - Socket file descriptor for communication
+*   current_data - The message data to process
+*   current_type - Type identifier of the message (OUT/CMD/ERR/CWD)
+*   n - Length of the current data to process
+* Returns: None
+*/
 void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n) {
     if (strcmp(current_type, "OUT") == 0) {
         printf("%.*s", n, current_data);
@@ -200,6 +239,18 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
     }
 }
 
+/*
+ * Processes received data from the server based on message type.
+ * This function handles three different message types: OUT (output),
+ * CMD (commands), and ERR (errors). It parses incoming messages and
+ * processes each segment according to its type and length.
+ * Parameters:
+ *   socketFD - The socket file descriptor
+ *   data - Buffer containing the message data
+ *   type - Buffer containing message type information
+ *   length - Buffer containing message length information
+ * Returns: None
+ */
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024]) {
     char *current_data = data;
     char *type_context, *length_context;
@@ -218,6 +269,13 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     }
 }
 
+/*
+ * Function executed by the listener thread that receives messages from the server.
+ * This is the main message processing loop that continuously monitors for incoming
+ * data and handles different types of server responses including commands and errors.
+ * Parameters: arg - A pointer to the socket file descriptor cast to void*.
+ * Returns: NULL upon completion.
+ */
 void *listenAndPrint(void *arg) {
     const int socketFD = (intptr_t) arg;
     // Continuous listening loop for server messages
@@ -253,6 +311,17 @@ void *listenAndPrint(void *arg) {
     return NULL;
 }
 
+/*
+ * Initializes the client socket, connects to the server,
+ * and returns the socket file descriptor. This function handles all network
+ * setup including IPv4 address creation and connection establishment.
+ * It includes error handling for various network setup failures.
+ * Parameters: ip - The server's IP address as a string.
+ * port - The server's port number as a string.
+ * Returns: A valid socket file descriptor if successful;
+ * EXIT_FAILURE if there is an error (such as socket creation
+ * failure or connection failure).
+ */
 int initClientSocket(const char *ip, const char *port) {
     // Create TCP/IPv4 socket
     const int socketFD = createTCPIpv4Socket();

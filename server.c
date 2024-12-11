@@ -175,7 +175,14 @@ int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_addr
  */
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
 
-
+/*
+ * Starts the process of accepting incoming connections on the server socket.
+ * This is the main server loop that manages client connections, enforces
+ * the maximum client limit, and initializes client handling threads.
+ * It continues running until the server is stopped via signal.
+ * Parameters: serverSocketFD - The file descriptor for the server socket.
+ * Returns: None.
+ */
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop) {
         // Lock mutex before checking client count
@@ -214,6 +221,14 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
     }
 }
 
+/*
+ * Creates a new thread to receive and print data from the connected client.
+ * This function initializes the thread handling for each new client connection,
+ * setting up the necessary structures for message processing.
+ * Parameters: clientSocketFD - A pointer to an AcceptedSocket structure
+ * containing the client socket file descriptor.
+ * Returns: None.
+ */
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
     // Create new thread and pass socket FD as argument
@@ -222,6 +237,13 @@ void receiveAndPrintIncomingDataOnSeparateThread(
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
 }
 
+/*
+ * checks if data in buffer is type of CMD.
+ * if it's CMD type checks for validity based upon banned words and allowed words.
+ * if the message is not type CMD or valid CMD type.
+ * received message is sent to other client.
+ * Returns: None.
+ */
 void check_message_received(const int clientSocketFD, char buffer[4096]) {
     if (acceptedSocketsCount < MAX_CLIENTS) {
         pthread_mutex_lock(&globals_mutex);
@@ -245,6 +267,16 @@ void check_message_received(const int clientSocketFD, char buffer[4096]) {
     }
 }
 
+/*
+ * Function executed by each client thread to receive data
+ * from the connected client and print it to the console.
+ * This is the main message processing loop for each connected client,
+ * handling incoming messages and routing them to other clients.
+ * It runs until the client disconnects or the server stops.
+ * Parameters: arg - A pointer to the client socket
+ * file descriptor cast to void*.
+ * Returns: NULL upon completion.
+ */
 void *receiveAndPrintIncomingData(void *arg) {
     // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t) arg;
@@ -284,6 +316,16 @@ void *receiveAndPrintIncomingData(void *arg) {
     return NULL;
 }
 
+/*
+ * Sends received messages from one client to all other connected clients.
+ * This function handles message broadcasting, ensuring that messages
+ * are properly routed to all connected clients except the sender.
+ * It maintains thread safety when accessing shared resources.
+ * Parameters: buffer - The message to be sent.
+ * socketFD - The file descriptor of the sender
+ * (to exclude it from receiving its own message).
+ * Returns: None.
+ */
 void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD) {
     // Lock mutex before accessing shared client data
     pthread_mutex_lock(&globals_mutex);
@@ -301,6 +343,16 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD
     pthread_mutex_unlock(&globals_mutex);
 }
 
+/*
+ * Accepts an incoming connection on the server socket.
+ * This function handles the initial connection setup for new clients,
+ * creating the necessary socket structures and performing error checking.
+ * It is called for each new client attempting to connect.
+ * Parameters: serverSocketFD - The file descriptor for the server socket.
+ * Returns: An AcceptedSocket structure containing the
+ * client socket file descriptor, address,
+ * success flag, and error code (if any).
+ */
 struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     // Initialize socket structure
     struct AcceptedSocket acceptedSocket = {0};
@@ -320,6 +372,13 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     return acceptedSocket;
 }
 
+/*
+ * Cleans up and cancels client threads based on the count provided.
+ * This function ensures proper thread termination and resource cleanup,
+ * preventing memory leaks and zombie threads.
+ * Parameters: count - The number of client threads to clean up.
+ * Returns: None.
+ */
 void cleanupThreads(const int count) {
     // Iterate through all client threads
     for (int i = 0; i < count; i++) {
@@ -331,6 +390,13 @@ void cleanupThreads(const int count) {
     }
 }
 
+/*
+ * Closes all accepted client sockets based on the count provided.
+ * This function handles the cleanup of network resources,
+ * ensuring all connections are properly terminated.
+ * Parameters: count - The number of accepted client sockets to close.
+ * Returns: None.
+ */
 void cleanupClientSockets(const int count) {
     // Iterate through all client sockets
     for (int i = 0; i < count; i++) {
@@ -341,6 +407,14 @@ void cleanupClientSockets(const int count) {
     }
 }
 
+/*
+ * Handles signals, specifically SIGINT (press ctrl+c)
+ * (interrupt signal) to safely terminate the server.
+ * This function ensures proper cleanup of resources when
+ * the server is interrupted, preventing memory leaks and
+ * hanging connections.
+ * Parameters: signal - The signal number received (e.g., SIGINT).
+ */
 void handle_signal(const int signal) {
     // Print a message indicating the signal received
     printf("Caught signal %d\n", signal);
@@ -348,6 +422,10 @@ void handle_signal(const int signal) {
     stop = 1;
 }
 
+/*
+ * creates server socket and address for it.
+ * returns 1 for failure 0 for success.
+ */
 int config_socket(const int port, int *serverSocketFD, struct sockaddr_in *server_address) {
     *serverSocketFD = createTCPIpv4Socket();
     if (*serverSocketFD == SOCKET_ERROR) {
@@ -363,6 +441,10 @@ int config_socket(const int port, int *serverSocketFD, struct sockaddr_in *serve
     return EXIT_SUCCESS;
 }
 
+/*
+ * binds server socket to an address
+ * listens on that server socket
+ */
 int bind_and_listen_on_socket(const int serverSocketFD, struct sockaddr_in server_address) {
     if (bind(serverSocketFD, (struct sockaddr *) &server_address, sizeof(server_address)) == SOCKET_INIT_ERROR) {
         printf("Socket bound successfully\n");
@@ -381,6 +463,16 @@ int bind_and_listen_on_socket(const int serverSocketFD, struct sockaddr_in serve
     return EXIT_SUCCESS;
 }
 
+/*
+ * Initializes the server socket, binds it to the specified port,
+ * and prepares it to listen for incoming connections.
+ * This function handles all server setup including address binding,
+ * socket creation, and listen queue initialization.
+ * Parameters: port - The port number on which the
+ * server will listen for incoming connections.
+ * Returns: A valid server socket file descriptor if successful;
+ * EXIT_FAILURE if there is an error.
+ */
 int initServerSocket(const int port) {
     int serverSocketFD;
     struct sockaddr_in server_address;
