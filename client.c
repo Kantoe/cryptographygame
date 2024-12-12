@@ -25,7 +25,6 @@
 #define SOCKET_INIT_ERROR 0
 #define IP_ARGV 1
 #define PORT_ARGV 2
-#define INIT_COMMAND_DIR "tlength:42;type:CMD;length:8;data:cd /home"
 
 //globals
 volatile int connectionClosed = 0;
@@ -215,25 +214,25 @@ void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
 * Returns: None
 */
 void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n) {
-    if (strcmp(current_type, "OUT") == 0) {
+    if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         printf("%.*s", n, current_data);
-    } else if (strcmp(current_type, "CMD") == 0) {
+    } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
         // Allocate memory for command and process it
-        char *command = malloc(n + 1);
+        char *command = malloc(n + NULL_CHAR_LEN);
         if (command != NULL) {
             strncpy(command, current_data, n);
-            command[n] = 0;
+            command[n] = NULL_CHAR;
         }
         pthread_mutex_lock(&cwd_mutex);
         execute_command_and_send(command, sizeof(command), socketFD,
                                  command_cwd, sizeof(command_cwd));
         pthread_mutex_unlock(&cwd_mutex);
         free(command);
-    } else if (strcmp(current_type, "ERR") == 0) {
+    } else if (strcmp(current_type, "ERR") == CMP_EQUAL) {
         printf("%.*s", n, current_data);
-    } else if (strcmp(current_type, "CWD") == 0) {
+    } else if (strcmp(current_type, "CWD") == CMP_EQUAL) {
         pthread_mutex_lock(&cwd_mutex);
-        memset(my_cwd, 0, sizeof(my_cwd));
+        memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
         strncpy(my_cwd, current_data, n);
         pthread_mutex_unlock(&cwd_mutex);
     }

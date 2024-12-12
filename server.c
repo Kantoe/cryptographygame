@@ -19,6 +19,8 @@
 #define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
 #define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
 #define SECOND_CLIENT_DISCONNECTED "tlength:66;type:ERR;length:31;data:\nSecond client disconnected ):\n"
+#define INIT_COMMAND_DIR "tlength:42;type:CMD;length:8;data:cd /home"
+#define INIT_MY_DIR "tlength:39;type:CWD;length:5;data:/home"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -37,6 +39,7 @@
 #define CMD_TYPE_LENGTH 3
 #define TYPE_OFFSET 5
 #define DATA_CMD_CHECK "CMD"
+#define DATA_OFFSET 5
 
 //data types
 struct AcceptedSocket {
@@ -198,7 +201,9 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
                 // Lock mutex before updating shared data
                 pthread_mutex_lock(&globals_mutex);
                 for (int i = 0; i < MAX_CLIENTS; i++) {
-                    if (!acceptedSockets[i].acceptedSuccessfully || acceptedSockets[i].acceptedSocketFD == -1) {
+                    //choose where to add client in array
+                    if (!acceptedSockets[i].acceptedSuccessfully || acceptedSockets[i].acceptedSocketFD ==
+                        SOCKET_ERROR) {
                         acceptedSockets[i] = clientSocket;
                         acceptedSocketsCount++;
                         break;
@@ -253,9 +258,17 @@ void check_message_received(const int clientSocketFD, char buffer[4096]) {
     }
     int valid_data_check = 1;
     // Check if message is a command type
-    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) == 0) {
+    if (strstr(buffer, "type:") == NULL) {
+        valid_data_check = 0;
+    } else if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < CMD_TYPE_LENGTH) {
+        valid_data_check = 0;
+    } else if (strstr(buffer, "data:") == NULL) {
+        valid_data_check = 0;
+    }
+    if (valid_data_check && strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
+        CMP_EQUAL) {
         // Validate command data
-        valid_data_check = check_command_data(strstr(buffer, "data:") + TYPE_OFFSET);
+        valid_data_check = check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
     }
     if (valid_data_check) {
         // Broadcast valid message to other clients
@@ -299,11 +312,12 @@ void *receiveAndPrintIncomingData(void *arg) {
         }
     }
     if (acceptedSocketsCount > 0) {
+        //send disconnect message and remove accepted socket from array
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
         pthread_mutex_lock(&globals_mutex);
         for (int i = 0; i < acceptedSocketsCount; i++) {
             if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-                acceptedSockets[i].acceptedSocketFD = -1;
+                acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
             }
         }
         pthread_mutex_unlock(&globals_mutex);
