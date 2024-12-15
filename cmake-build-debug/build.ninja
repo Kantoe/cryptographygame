@@ -167,6 +167,12 @@ build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryp
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
+build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/flag_file.c || cmake_object_order_depends_target_cryptography_game_util
+  DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o.d
+  FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
+  OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
+
 
 # =============================================================================
 # Link build statements for STATIC_LIBRARY target cryptography_game_util
@@ -175,7 +181,7 @@ build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryp
 #############################################
 # Link the static library /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
 
-build /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a: C_STATIC_LIBRARY_LINKER__cryptography_game_util_Debug /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/networking.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/commands.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/packet_parse_and_build.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/security.c.o
+build /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a: C_STATIC_LIBRARY_LINKER__cryptography_game_util_Debug /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/networking.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/commands.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/packet_parse_and_build.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/security.c.o /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o
   LANGUAGE_COMPILE_FLAGS = -g
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   POST_BUILD = :
