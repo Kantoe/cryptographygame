@@ -52,3 +52,11 @@
 29	47	1734294189035720253	/home/idokantor/CLionProjects/cryptography_game_util/build/Test	db770490e0715335
 1	35	1734294198628504897	/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o	d99e4a29c961cca7
 35	55	1734294198662504137	/home/idokantor/CLionProjects/cryptography_game_util/build/Test	db770490e0715335
+17	150	1734452844875476127	/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o	7c646c2bb5534798
+150	175	1734452845008470963	/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a	9a937fe4797d30a1
+175	239	1734452845033469996	Server	23c8158027ab9314
+4	62	1734452847661368694	Client	801b95b4fe7ba0e4
+5	213	1734453115932100763	/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/security.c.o	c30f513bb86a19ca
+213	253	1734453116140098109	/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a	9a937fe4797d30a1
+253	329	1734453116180097599	Server	23c8158027ab9314
+1	29	1734453176041423135	Client	801b95b4fe7ba0e4
