@@ -34,6 +34,7 @@ pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 volatile bool ready_to_print = true;
+char flag_path[1024] = {0};
 
 //prototypes
 
@@ -235,6 +236,8 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
         strncpy(my_cwd, current_data, n);
         pthread_mutex_unlock(&cwd_mutex);
+    } else if (strcmp(current_type, "FLG") == CMP_EQUAL) {
+        //function to handle flag type requests
     }
 }
 

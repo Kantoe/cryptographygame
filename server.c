@@ -163,7 +163,7 @@ int initServerSocket(int port);
  * Returns: None.
  */
 
-void check_message_received(int clientSocketFD, char buffer[4096]);
+int check_message_received(int clientSocketFD, char buffer[4096]);
 
 /*
  * creates server socket and address for it.
@@ -177,6 +177,8 @@ int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_addr
  * listens on that server socket
  */
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
+
+void remove_client(int clientSocketFD);
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -249,30 +251,50 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  * received message is sent to other client.
  * Returns: None.
  */
-void check_message_received(const int clientSocketFD, char buffer[4096]) {
-    if (acceptedSocketsCount < MAX_CLIENTS) {
-        pthread_mutex_lock(&globals_mutex);
-        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-        pthread_mutex_unlock(&globals_mutex);
-        return;
-    }
+int check_message_received(const int clientSocketFD, char buffer[4096]) {
     int valid_data_check = 1;
     // Check if message is a command type
     if (strstr(buffer, "type:") == NULL) {
-        valid_data_check = 0;
-    } else if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < CMD_TYPE_LENGTH) {
-        valid_data_check = 0;
-    } else if (strstr(buffer, "data:") == NULL) {
-        valid_data_check = 0;
+        return 0;
     }
-    if (valid_data_check && strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
+    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < CMD_TYPE_LENGTH) {
+        return 0;
+    }
+    if (strstr(buffer, "data:") == NULL) {
+        return 0;
+    }
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
         CMP_EQUAL) {
         // Validate command data
         valid_data_check = check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
     }
-    if (valid_data_check) {
-        // Broadcast valid message to other clients
-        sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+    return valid_data_check;
+}
+
+void remove_client(const int clientSocketFD) {
+    pthread_mutex_lock(&globals_mutex);
+    for (int i = 0; i < acceptedSocketsCount; i++) {
+        if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
+            acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
+        }
+    }
+    pthread_mutex_unlock(&globals_mutex);
+    pthread_mutex_lock(&globals_mutex);
+    acceptedSocketsCount--;
+    pthread_mutex_unlock(&globals_mutex);
+}
+
+void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
+    if (check_message_received(clientSocketFD, buffer)) {
+        if (acceptedSocketsCount < MAX_CLIENTS) {
+            //are there not 2 clients connected?
+            pthread_mutex_lock(&globals_mutex);
+            s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
+            pthread_mutex_unlock(&globals_mutex);
+        } else {
+            //send to other clients
+            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+        }
     } else {
         // Send error for invalid command
         s_send(clientSocketFD, INVALID_DATA,
@@ -304,7 +326,8 @@ void *receiveAndPrintIncomingData(void *arg) {
             buffer[amountReceived] = NULL_CHAR;
             // Log received message
             printf("%s\n", buffer);
-            check_message_received(clientSocketFD, buffer);
+            //deal with client message and make an ideal response
+            generate_message_for_clients(clientSocketFD, buffer);
         }
         // Exit if connection closed or server stopping
         if (amountReceived <= CHECK_RECEIVE || stop) {
@@ -314,16 +337,7 @@ void *receiveAndPrintIncomingData(void *arg) {
     if (acceptedSocketsCount > 0) {
         //send disconnect message and remove accepted socket from array
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
-        pthread_mutex_lock(&globals_mutex);
-        for (int i = 0; i < acceptedSocketsCount; i++) {
-            if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-                acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
-            }
-        }
-        pthread_mutex_unlock(&globals_mutex);
-        pthread_mutex_lock(&globals_mutex);
-        acceptedSocketsCount--;
-        pthread_mutex_unlock(&globals_mutex);
+        remove_client(clientSocketFD);
     }
     // Cleanup client socket
     close(clientSocketFD);
