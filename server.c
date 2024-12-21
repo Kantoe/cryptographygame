@@ -19,8 +19,7 @@
 #define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
 #define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
 #define SECOND_CLIENT_DISCONNECTED "tlength:66;type:ERR;length:31;data:\nSecond client disconnected ):\n"
-#define INIT_COMMAND_DIR "tlength:42;type:CMD;length:8;data:cd /home"
-#define INIT_MY_DIR "tlength:39;type:CWD;length:5;data:/home"
+#define DIR_REQUEST "tlength:41;type:FLG;length:7;data:FLG_DIR"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -47,6 +46,7 @@ struct AcceptedSocket {
     struct sockaddr_in address;
     int error;
     int acceptedSuccessfully;
+    char flag_data[32];
 };
 
 //globals
@@ -163,7 +163,7 @@ int initServerSocket(int port);
  * Returns: None.
  */
 
-int check_message_received(int clientSocketFD, char buffer[4096]);
+int check_message_received(char buffer[4096]);
 
 /*
  * creates server socket and address for it.
@@ -179,6 +179,8 @@ int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_addr
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
 
 void remove_client(int clientSocketFD);
+
+void generate_message_for_clients(int clientSocketFD, char buffer[4096]);
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -239,6 +241,7 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
     // Create new thread and pass socket FD as argument
+    //deal with thread array
     pthread_create(&clientThreads[acceptedSocketsCount - PTHREAD_CREATE],
                    NULL, receiveAndPrintIncomingData,
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
@@ -251,17 +254,17 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  * received message is sent to other client.
  * Returns: None.
  */
-int check_message_received(const int clientSocketFD, char buffer[4096]) {
+int check_message_received(char buffer[4096]) {
     int valid_data_check = 1;
     // Check if message is a command type
     if (strstr(buffer, "type:") == NULL) {
-        return 0;
+        return false;
     }
     if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < CMD_TYPE_LENGTH) {
-        return 0;
+        return false;
     }
     if (strstr(buffer, "data:") == NULL) {
-        return 0;
+        return false;
     }
     if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
         CMP_EQUAL) {
@@ -285,7 +288,7 @@ void remove_client(const int clientSocketFD) {
 }
 
 void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
-    if (check_message_received(clientSocketFD, buffer)) {
+    if (check_message_received(buffer)) {
         if (acceptedSocketsCount < MAX_CLIENTS) {
             //are there not 2 clients connected?
             pthread_mutex_lock(&globals_mutex);
@@ -302,6 +305,9 @@ void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
     }
 }
 
+int generate_client_flag(int *flag_file_tries, int clientSocketFD) {
+}
+
 /*
  * Function executed by each client thread to receive data
  * from the connected client and print it to the console.
@@ -315,6 +321,8 @@ void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
 void *receiveAndPrintIncomingData(void *arg) {
     // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t) arg;
+    int flag_file_tries = 0;
+    s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop) {
         // Initialize buffer for incoming message
         char buffer[BUFFER_SIZE] = {0};
@@ -326,8 +334,12 @@ void *receiveAndPrintIncomingData(void *arg) {
             buffer[amountReceived] = NULL_CHAR;
             // Log received message
             printf("%s\n", buffer);
-            //deal with client message and make an ideal response
-            generate_message_for_clients(clientSocketFD, buffer);
+            if (flag_file_tries != -1) {
+                generate_client_flag(&flag_file_tries, clientSocketFD);
+            } else {
+                //deal with client message and make an ideal response
+                generate_message_for_clients(clientSocketFD, buffer);
+            }
         }
         // Exit if connection closed or server stopping
         if (amountReceived <= CHECK_RECEIVE || stop) {
@@ -396,6 +408,7 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     acceptedSocket.acceptedSocketFD = clientSocketFD;
     acceptedSocket.acceptedSuccessfully = clientSocketFD > ACCEPTED_SUCCESSFULLY;
     acceptedSocket.error = clientSocketFD < ACCEPTED_SUCCESSFULLY ? clientSocketFD : ACCEPTED_SUCCESSFULLY;
+    memset(acceptedSocket.flag_data, NULL_CHAR, sizeof(acceptedSocket.flag_data));
 
     return acceptedSocket;
 }
