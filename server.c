@@ -11,6 +11,7 @@
 #include <fcntl.h>
 
 #include "cryptography_game_util.h"
+#include "flag_file.h"
 
 //defines
 #define CORRECT_ARGC 2
@@ -247,6 +248,19 @@ void receiveAndPrintIncomingDataOnSeparateThread(
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
 }
 
+int check_message_fields(const char *buffer) {
+    if (strstr(buffer, "type:") == NULL) {
+        return false;
+    }
+    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < 3) {
+        return false;
+    }
+    if (strstr(buffer, "data:") == NULL) {
+        return false;
+    }
+    return true;
+}
+
 /*
  * checks if data in buffer is type of CMD.
  * if it's CMD type checks for validity based upon banned words and allowed words.
@@ -255,23 +269,15 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  * Returns: None.
  */
 int check_message_received(char buffer[4096]) {
-    int valid_data_check = 1;
-    // Check if message is a command type
-    if (strstr(buffer, "type:") == NULL) {
-        return false;
-    }
-    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < CMD_TYPE_LENGTH) {
-        return false;
-    }
-    if (strstr(buffer, "data:") == NULL) {
+    if (!check_message_fields(buffer)) {
         return false;
     }
     if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
         CMP_EQUAL) {
         // Validate command data
-        valid_data_check = check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
+        return check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
     }
-    return valid_data_check;
+    return true;
 }
 
 void remove_client(const int clientSocketFD) {
@@ -305,7 +311,44 @@ void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
     }
 }
 
-int generate_client_flag(int *flag_file_tries, int clientSocketFD) {
+
+void generate_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD) {
+    char flag_command[256] = {0};
+    char random_str[32] = {0};
+    generate_random_string(random_str, 31);
+    if (snprintf(flag_command, sizeof(flag_command), "echo '%s' > %s/flag.txt", random_str, buffer) < sizeof(
+            flag_command)) {
+        char flag_command_buffer[512] = {0};
+        if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
+            s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
+            *flag_file_tries = -1;
+            for (int i = 0; i < acceptedSocketsCount; i++) {
+                if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
+                    strcpy(acceptedSockets[i].flag_data, random_str);
+                }
+            }
+        }
+    }
+}
+
+int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD) {
+    if (*flag_file_tries >= 5) {
+        return false;
+    }
+    if (!check_message_fields(buffer)) {
+        return false;
+    }
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) != CMP_EQUAL) {
+        return true;
+    }
+    if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET)) {
+        generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, flag_file_tries, clientSocketFD);
+    }
+    if (*flag_file_tries != -1) {
+        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+        *flag_file_tries += 1;
+    }
+    return true;
 }
 
 /*
@@ -335,7 +378,9 @@ void *receiveAndPrintIncomingData(void *arg) {
             // Log received message
             printf("%s\n", buffer);
             if (flag_file_tries != -1) {
-                generate_client_flag(&flag_file_tries, clientSocketFD);
+                if (!handle_client_flag(buffer, &flag_file_tries, clientSocketFD)) {
+                    break;
+                }
             } else {
                 //deal with client message and make an ideal response
                 generate_message_for_clients(clientSocketFD, buffer);

@@ -7,6 +7,7 @@
 
 #include <pthread.h>
 #include "cryptography_game_util.h"
+#include "flag_file.h"
 
 //defines
 #define CORRECT_ARGC 3
@@ -25,6 +26,7 @@
 #define SOCKET_INIT_ERROR 0
 #define IP_ARGV 1
 #define PORT_ARGV 2
+#define FLAG_ERROR "tlength:39;type:FLG;length:5;data:error"
 
 //globals
 volatile int connectionClosed = 0;
@@ -34,7 +36,7 @@ pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 volatile bool ready_to_print = true;
-char flag_path[1024] = {0};
+char flag_path[512] = {0};
 
 //prototypes
 
@@ -199,6 +201,30 @@ void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
     pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
 }
 
+void handle_flag_requests(const int socketFD, const char *current_data, const int n) {
+    if (strncmp(current_data, "FLG_DIR", n) == CMP_EQUAL) {
+        char path[256] = {0};
+        if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
+            char buffer[512] = {0};
+            prepare_buffer(buffer, sizeof(buffer), path, "FLG");
+            s_send(socketFD, buffer, strlen(buffer));
+            memset(flag_path, 0, sizeof(flag_path));
+            strcpy(flag_path, path);
+        } else {
+            s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+        }
+        return;
+    }
+    char command[n + 1];
+    memset(command, 0, n + 1);
+    strncpy(command, current_data, n);
+    if (create_or_delete_flag_file(command) == STATUS_OKAY) {
+        strcat(flag_path, "flag.txt");
+    } else {
+        s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+    }
+}
+
 /*
 * Processes received data from the server based on message type.
 * Handles four different message types:
@@ -237,7 +263,7 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         strncpy(my_cwd, current_data, n);
         pthread_mutex_unlock(&cwd_mutex);
     } else if (strcmp(current_type, "FLG") == CMP_EQUAL) {
-        //function to handle flag type requests
+        handle_flag_requests(socketFD, current_data, n);
     }
 }
 
@@ -300,6 +326,10 @@ void *listenAndPrint(void *arg) {
             }
         } else {
             // Handle connection closure
+            pthread_mutex_lock(&sync_mutex);
+            ready_to_print = true;
+            pthread_cond_signal(&sync_cond);
+            pthread_mutex_unlock(&sync_mutex);
             printf("\nConnection closed, press any key to exit\n");
             connectionClosed = 1;
             break;
