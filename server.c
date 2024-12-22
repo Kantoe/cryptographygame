@@ -56,7 +56,6 @@ struct AcceptedSocket {
 volatile sig_atomic_t stop = 0;
 struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
 unsigned int acceptedSocketsCount = 0;
-pthread_t clientThreads[MAX_CLIENTS] = {0};
 pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 //Mutex for globals
 
@@ -135,7 +134,6 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD);
  * Parameters: count - The number of client threads to clean up.
  * Returns: None.
  */
-void cleanupThreads(int count);
 
 /*
  * Closes all accepted client sockets based on the count provided.
@@ -245,7 +243,8 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
     // Create new thread and pass socket FD as argument
     //deal with thread array
-    pthread_create(&clientThreads[acceptedSocketsCount - PTHREAD_CREATE],
+    pthread_t clientThread;
+    pthread_create(&clientThread,
                    NULL, receiveAndPrintIncomingData,
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
 }
@@ -396,6 +395,7 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
  * Returns: NULL upon completion.
  */
 void *receiveAndPrintIncomingData(void *arg) {
+    pthread_detach(pthread_self());
     // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t) arg;
     int flag_file_tries = 0;
@@ -407,7 +407,6 @@ void *receiveAndPrintIncomingData(void *arg) {
         char buffer[BUFFER_SIZE] = {0};
         // Receive data from client
         const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
-
         if (amountReceived > CHECK_RECEIVE) {
             // Null terminate received message
             buffer[amountReceived] = NULL_CHAR;
@@ -433,7 +432,6 @@ void *receiveAndPrintIncomingData(void *arg) {
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
         remove_client(clientSocketFD);
     }
-    // Cleanup client socket
     close(clientSocketFD);
     return NULL;
 }
@@ -502,16 +500,7 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
  * Parameters: count - The number of client threads to clean up.
  * Returns: None.
  */
-void cleanupThreads(const int count) {
-    // Iterate through all client threads
-    for (int i = 0; i < count; i++) {
-        // Cancel and join active threads
-        if (clientThreads[i] != CLIENT_THREAD_EXISTS) {
-            pthread_cancel(clientThreads[i]);
-            pthread_join(clientThreads[i], NULL);
-        }
-    }
-}
+
 
 /*
  * Closes all accepted client sockets based on the count provided.
@@ -644,7 +633,6 @@ int main(const int argc, char *argv[]) {
     startAcceptingIncomingConnections(serverSocketFD);
 
     // Cleanup resources
-    cleanupThreads(acceptedSocketsCount);
     cleanupClientSockets(acceptedSocketsCount);
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
