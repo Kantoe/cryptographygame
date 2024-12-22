@@ -255,7 +255,7 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
             command[n] = NULL_CHAR;
         }
         pthread_mutex_lock(&cwd_mutex);
-        execute_command_and_send(command, sizeof(command), socketFD,
+        execute_command_and_send(command, n + NULL_CHAR_LEN, socketFD,
                                  command_cwd, sizeof(command_cwd));
         pthread_mutex_unlock(&cwd_mutex);
         free(command);

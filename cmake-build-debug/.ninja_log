@@ -29,3 +29,11 @@
 73	119	1734860985519363186	Client	801b95b4fe7ba0e4
 1	67	1734861633663082709	CMakeFiles/Client.dir/client.c.o	f91fe4644add0b6e
 67	90	1734861633729082202	Client	801b95b4fe7ba0e4
+4	228	1734883676789482864	CMakeFiles/Server.dir/server.c.o	d876e1e6a198b899
+229	266	1734883677014482981	Server	23c8158027ab9314
+3	64	1734883679490484239	CMakeFiles/Client.dir/client.c.o	f91fe4644add0b6e
+64	92	1734883679551484269	Client	801b95b4fe7ba0e4
+1	45	1734883841179461919	/home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/commands.c.o	a87e04ac8ce3e5fd
+45	59	1734883841222461891	/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a	9a937fe4797d30a1
+59	78	1734883841236461882	Server	23c8158027ab9314
+0	28	1734883844858459486	Client	801b95b4fe7ba0e4

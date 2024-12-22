@@ -346,15 +346,16 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
     if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
         *flag_okay_response = 0;
         *flag_request_dir = 0;
-    }
-    if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
-        *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
-        return true;
-    }
-    if (*flag_request_dir) {
-        if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
-            *flag_okay_response = 1;
+    } else {
+        if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
+            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
             return true;
+        }
+        if (*flag_request_dir) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
+                *flag_okay_response = 1;
+                return true;
+            }
         }
     }
     if (*flag_request_dir == 0) {
