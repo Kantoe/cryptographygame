@@ -312,7 +312,7 @@ void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
 }
 
 
-void generate_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD) {
+int generate_client_flag(const char *buffer, const int clientSocketFD) {
     char flag_command[256] = {0};
     char random_str[32] = {0};
     generate_random_string(random_str, 31);
@@ -321,17 +321,19 @@ void generate_client_flag(const char *buffer, int *flag_file_tries, const int cl
         char flag_command_buffer[512] = {0};
         if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
             s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
-            *flag_file_tries = -1;
             for (int i = 0; i < acceptedSocketsCount; i++) {
                 if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
                     strcpy(acceptedSockets[i].flag_data, random_str);
+                    return 1;
                 }
             }
         }
     }
+    return 0;
 }
 
-int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD) {
+int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
+                       int *flag_request_dir) {
     if (*flag_file_tries >= 5) {
         return false;
     }
@@ -341,10 +343,21 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
     if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) != CMP_EQUAL) {
         return true;
     }
-    if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET)) {
-        generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, flag_file_tries, clientSocketFD);
+    if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
+        *flag_okay_response = 0;
+        *flag_request_dir = 0;
     }
-    if (*flag_file_tries != -1) {
+    if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
+        *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
+        return true;
+    }
+    if (*flag_request_dir) {
+        if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
+            *flag_okay_response = 1;
+            return true;
+        }
+    }
+    if (*flag_request_dir == 0) {
         s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
         *flag_file_tries += 1;
     }
@@ -365,6 +378,8 @@ void *receiveAndPrintIncomingData(void *arg) {
     // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t) arg;
     int flag_file_tries = 0;
+    int flag_request_dir = 0;
+    int flag_okay_response = 0;
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop) {
         // Initialize buffer for incoming message
@@ -377,8 +392,9 @@ void *receiveAndPrintIncomingData(void *arg) {
             buffer[amountReceived] = NULL_CHAR;
             // Log received message
             printf("%s\n", buffer);
-            if (flag_file_tries != -1) {
-                if (!handle_client_flag(buffer, &flag_file_tries, clientSocketFD)) {
+            if (!(flag_okay_response && flag_request_dir)) {
+                if (!handle_client_flag(buffer, &flag_file_tries, clientSocketFD, &flag_okay_response,
+                                        &flag_request_dir)) {
                     break;
                 }
             } else {

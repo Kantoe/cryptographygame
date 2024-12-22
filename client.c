@@ -27,6 +27,7 @@
 #define IP_ARGV 1
 #define PORT_ARGV 2
 #define FLAG_ERROR "tlength:39;type:FLG;length:5;data:error"
+#define FLAG_OKAY "tlength:38;type:FLG;length:4;data:okay"
 
 //globals
 volatile int connectionClosed = 0;
@@ -92,7 +93,7 @@ int initClientSocket(const char *ip, const char *port);
  *   length - Buffer containing message length information
  * Returns: None
  */
-void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024]);
+void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024], bool *flag_requests);
 
 /*
 * Synchronizes console output using thread synchronization primitives.
@@ -120,7 +121,7 @@ void wait_for_print(void);
 *   n - Length of the current data to process
 * Returns: None
 */
-void process_message_type(int socketFD, char *current_data, const char *current_type, int n);
+void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests);
 
 /*
 * Synchronizes console output using thread synchronization primitives.
@@ -201,7 +202,7 @@ void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
     pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
 }
 
-void handle_flag_requests(const int socketFD, const char *current_data, const int n) {
+bool handle_flag_requests(const int socketFD, const char *current_data, const int n) {
     if (strncmp(current_data, "FLG_DIR", n) == CMP_EQUAL) {
         char path[256] = {0};
         if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
@@ -213,16 +214,18 @@ void handle_flag_requests(const int socketFD, const char *current_data, const in
         } else {
             s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
         }
-        return;
+        return true;
     }
     char command[n + 1];
     memset(command, 0, n + 1);
     strncpy(command, current_data, n);
     if (create_or_delete_flag_file(command) == STATUS_OKAY) {
         strcat(flag_path, "flag.txt");
-    } else {
-        s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+        s_send(socketFD, FLAG_OKAY, strlen(FLAG_OKAY));
+        return false;
     }
+    s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+    return true;
 }
 
 /*
@@ -240,7 +243,8 @@ void handle_flag_requests(const int socketFD, const char *current_data, const in
 *   n - Length of the current data to process
 * Returns: None
 */
-void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n) {
+void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n,
+                          bool *flag_requests) {
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         printf("%.*s", n, current_data);
     } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
@@ -262,8 +266,8 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
         strncpy(my_cwd, current_data, n);
         pthread_mutex_unlock(&cwd_mutex);
-    } else if (strcmp(current_type, "FLG") == CMP_EQUAL) {
-        handle_flag_requests(socketFD, current_data, n);
+    } else if (strcmp(current_type, "FLG") == CMP_EQUAL && flag_requests) {
+        *flag_requests = handle_flag_requests(socketFD, current_data, n);
     }
 }
 
@@ -279,7 +283,8 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
  *   length - Buffer containing message length information
  * Returns: None
  */
-void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024]) {
+void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024],
+                           bool *flag_requests) {
     char *current_data = data;
     char *type_context, *length_context;
     // Initialize tokenization of message type and length
@@ -289,7 +294,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     while (current_length != NULL && current_type != NULL) {
         const int n = atoi(current_length);
         // Handle different message types (OUT, CMD, ERR)
-        process_message_type(socketFD, current_data, current_type, n);
+        process_message_type(socketFD, current_data, current_type, n, flag_requests);
         // Move to next message segment
         current_data += n;
         current_type = strtok_r(NULL, ";", &type_context);
@@ -306,6 +311,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
  */
 void *listenAndPrint(void *arg) {
     const int socketFD = (intptr_t) arg;
+    bool flag_requests = true;
     // Continuous listening loop for server messages
     while (TRUE) {
         char buffer[BUFFER_SIZE] = {0};
@@ -322,7 +328,7 @@ void *listenAndPrint(void *arg) {
                                                      length, strlen(buffer), sizeof(length),
                                                      sizeof(data), sizeof(type));
             if (check) {
-                process_received_data(socketFD, data, type, length);
+                process_received_data(socketFD, data, type, length, &flag_requests);
             }
         } else {
             // Handle connection closure
