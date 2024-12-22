@@ -40,6 +40,8 @@
 #define TYPE_OFFSET 5
 #define DATA_CMD_CHECK "CMD"
 #define DATA_OFFSET 5
+#define WIN_MSG "tlength:45;type:OUT;length:10;data:\nyou won!\n"
+#define LOSE_MSG "tlength:48;type:OUT;length:13;data:\nyou lost ):\n"
 
 //data types
 struct AcceptedSocket {
@@ -181,7 +183,7 @@ int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_addr
 
 void remove_client(int clientSocketFD);
 
-void generate_message_for_clients(int clientSocketFD, char buffer[4096]);
+int generate_message_for_clients(int clientSocketFD, char buffer[4096]);
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -293,22 +295,40 @@ void remove_client(const int clientSocketFD) {
     pthread_mutex_unlock(&globals_mutex);
 }
 
-void generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
-    if (check_message_received(buffer)) {
-        if (acceptedSocketsCount < MAX_CLIENTS) {
-            //are there not 2 clients connected?
-            pthread_mutex_lock(&globals_mutex);
-            s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-            pthread_mutex_unlock(&globals_mutex);
-        } else {
-            //send to other clients
-            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+bool check_winner(const int clientSocketFD, char buffer[4096]) {
+    pthread_mutex_lock(&globals_mutex);
+    for (int i = 0; i < acceptedSocketsCount; i++) {
+        if (acceptedSockets[i].acceptedSocketFD != clientSocketFD) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, acceptedSockets[i].flag_data) == CMP_EQUAL) {
+                pthread_mutex_unlock(&globals_mutex);
+                return true;
+            }
         }
-    } else {
-        // Send error for invalid command
-        s_send(clientSocketFD, INVALID_DATA,
-               strlen(INVALID_DATA));
     }
+    pthread_mutex_unlock(&globals_mutex);
+    return false;
+}
+
+int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
+    if (acceptedSocketsCount < MAX_CLIENTS) {
+        //are there not 2 clients connected?
+        pthread_mutex_lock(&globals_mutex);
+        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
+        pthread_mutex_unlock(&globals_mutex);
+    } else {
+        if (check_winner(clientSocketFD, buffer)) {
+            s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
+            sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD);
+            return 1;
+        }
+        if (check_message_received(buffer)) {
+            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+        } else {
+            s_send(clientSocketFD, INVALID_DATA,
+                   strlen(INVALID_DATA));
+        }
+    }
+    return 0;
 }
 
 
@@ -400,7 +420,7 @@ void *receiveAndPrintIncomingData(void *arg) {
                 }
             } else {
                 //deal with client message and make an ideal response
-                generate_message_for_clients(clientSocketFD, buffer);
+                stop = generate_message_for_clients(clientSocketFD, buffer);
             }
         }
         // Exit if connection closed or server stopping

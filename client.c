@@ -220,7 +220,7 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
     memset(command, 0, n + 1);
     strncpy(command, current_data, n);
     if (create_or_delete_flag_file(command) == STATUS_OKAY) {
-        strcat(flag_path, "flag.txt");
+        strcat(flag_path, "/flag.txt");
         s_send(socketFD, FLAG_OKAY, strlen(FLAG_OKAY));
         return false;
     }
@@ -416,6 +416,9 @@ int main(const int argc, char *argv[]) {
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     readConsoleEntriesAndSendToServer(socketFD);
+    char command[515];
+    snprintf(command, sizeof(command), "rm %s", flag_path);
+    create_or_delete_flag_file(command);
     pthread_mutex_destroy(&cwd_mutex);
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
