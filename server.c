@@ -278,7 +278,8 @@ int check_message_received(char buffer[4096]) {
         // Validate command data
         return check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
     }
-    return true;
+    return strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) !=
+           CMP_EQUAL;
 }
 
 void remove_client(const int clientSocketFD) {
@@ -318,7 +319,7 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
         if (check_winner(clientSocketFD, buffer)) {
             s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
             sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD);
-            return 1;
+            return true;
         }
         if (check_message_received(buffer)) {
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
@@ -327,7 +328,7 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
                    strlen(INVALID_DATA));
         }
     }
-    return 0;
+    return false;
 }
 
 
