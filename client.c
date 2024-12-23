@@ -310,6 +310,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
  * Returns: NULL upon completion.
  */
 void *listenAndPrint(void *arg) {
+    pthread_detach(pthread_self());
     const int socketFD = (intptr_t) arg;
     bool flag_requests = true;
     // Continuous listening loop for server messages
@@ -400,6 +401,12 @@ int initClientSocket(const char *ip, const char *port) {
  *   EXIT_FAILURE if incorrect arguments or connection fails
  */
 
+void delete_flag_file(void) {
+    char command[515] = {0};
+    snprintf(command, sizeof(command), "rm %s", flag_path);
+    create_or_delete_flag_file(command);
+}
+
 int main(const int argc, char *argv[]) {
     // Validate command line arguments
     if (argc != CORRECT_ARGC) {
@@ -416,9 +423,7 @@ int main(const int argc, char *argv[]) {
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     readConsoleEntriesAndSendToServer(socketFD);
-    char command[515];
-    snprintf(command, sizeof(command), "rm %s", flag_path);
-    create_or_delete_flag_file(command);
+    delete_flag_file();
     pthread_mutex_destroy(&cwd_mutex);
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
