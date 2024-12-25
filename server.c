@@ -52,6 +52,10 @@ struct AcceptedSocket {
     char flag_data[32];
 };
 
+/*
+ * waiter
+ */
+
 //globals
 volatile sig_atomic_t stop = 0;
 struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
@@ -428,11 +432,14 @@ void *receiveAndPrintIncomingData(void *arg) {
             break;
         }
     }
+    pthread_mutex_lock(&globals_mutex);
     if (acceptedSocketsCount > 0) {
+        pthread_mutex_unlock(&globals_mutex);
         //send disconnect message and remove accepted socket from array
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
         remove_client(clientSocketFD);
     }
+    pthread_mutex_unlock(&globals_mutex);
     close(clientSocketFD);
     return NULL;
 }

@@ -6,6 +6,7 @@
  */
 
 #include <pthread.h>
+#include <signal.h>
 #include "cryptography_game_util.h"
 #include "flag_file.h"
 
@@ -401,10 +402,34 @@ int initClientSocket(const char *ip, const char *port) {
  *   EXIT_FAILURE if incorrect arguments or connection fails
  */
 
-void delete_flag_file(void) {
+void delete_flag_file() {
     char command[515] = {0};
     snprintf(command, sizeof(command), "rm %s", flag_path);
     create_or_delete_flag_file(command);
+}
+
+void termination_handler(const int signal) {
+    printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
+    delete_flag_file();
+    exit(EXIT_FAILURE);
+}
+
+void init_signal_handle() {
+    struct sigaction sa;
+    // Set up the signal handler
+    sa.sa_handler = termination_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    // List of termination signals to handle
+    const int signals[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP};
+    const size_t num_signals = sizeof(signals) / sizeof(signals[0]);
+
+    for (size_t i = 0; i < num_signals; i++) {
+        if (sigaction(signals[i], &sa, NULL) == -1) {
+            perror("sigaction");
+            exit(EXIT_FAILURE);
+        }
+    }
 }
 
 int main(const int argc, char *argv[]) {
@@ -422,6 +447,9 @@ int main(const int argc, char *argv[]) {
     strcpy(command_cwd, "/home");
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
+    //initiate signal handler
+    init_signal_handle();
+    //start reading console entries
     readConsoleEntriesAndSendToServer(socketFD);
     delete_flag_file();
     pthread_mutex_destroy(&cwd_mutex);
