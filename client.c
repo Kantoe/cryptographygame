@@ -423,7 +423,6 @@ void init_signal_handle() {
     // List of termination signals to handle
     const int signals[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP};
     const size_t num_signals = sizeof(signals) / sizeof(signals[0]);
-
     for (size_t i = 0; i < num_signals; i++) {
         if (sigaction(signals[i], &sa, NULL) == -1) {
             perror("sigaction");
