@@ -403,6 +403,9 @@ int initClientSocket(const char *ip, const char *port) {
  */
 
 void delete_flag_file() {
+    if (strlen(flag_path) <= 0) {
+        return;
+    }
     char command[515] = {0};
     snprintf(command, sizeof(command), "rm %s", flag_path);
     create_or_delete_flag_file(command);

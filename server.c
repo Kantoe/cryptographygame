@@ -438,6 +438,7 @@ void *receiveAndPrintIncomingData(void *arg) {
         //send disconnect message and remove accepted socket from array
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
         remove_client(clientSocketFD);
+        stop = 1;
     }
     pthread_mutex_unlock(&globals_mutex);
     close(clientSocketFD);
