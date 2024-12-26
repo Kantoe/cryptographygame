@@ -52,9 +52,13 @@ struct AcceptedSocket {
     char flag_data[32];
 };
 
-/*
- * waiter
- */
+typedef struct {
+    volatile sig_atomic_t stop;
+    struct AcceptedSocket acceptedSockets[MAX_CLIENTS];
+    unsigned int acceptedSocketsCount;
+    pthread_mutex_t globals_mutex;
+    int acceptedSocketFD;
+} Game;
 
 //globals
 volatile sig_atomic_t stop = 0;
@@ -248,6 +252,12 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     // Create new thread and pass socket FD as argument
     //deal with thread array
     pthread_t clientThread;
+    /*Game *game = malloc(sizeof(Game));
+    game->acceptedSocketFD = clientSocketFD->acceptedSocketFD;
+    pthread_create(&clientThread,
+                   NULL, receiveAndPrintIncomingData,
+                   game);
+    free(game);*/
     pthread_create(&clientThread,
                    NULL, receiveAndPrintIncomingData,
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
@@ -403,6 +413,7 @@ void *receiveAndPrintIncomingData(void *arg) {
     pthread_detach(pthread_self());
     // Cast void pointer back to socket FD
     const int clientSocketFD = (intptr_t) arg;
+    //const int clientSocketFD = ((Game *) arg)->acceptedSocketFD;
     int flag_file_tries = 0;
     int flag_request_dir = 0;
     int flag_okay_response = 0;
