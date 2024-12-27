@@ -53,15 +53,14 @@ struct AcceptedSocket {
 };
 
 typedef struct {
-    volatile sig_atomic_t stop;
-    struct AcceptedSocket acceptedSockets[MAX_CLIENTS];
-    unsigned int acceptedSocketsCount;
-    pthread_mutex_t globals_mutex;
-    int acceptedSocketFD;
+    volatile sig_atomic_t stop_game; //stop a single game
+    struct AcceptedSocket game_clients[MAX_CLIENTS]; //array of two client sockets
+    unsigned int acceptedSocketsCount; //num of clients in a game; max 2
+    pthread_mutex_t game_mutex; //mutex for a game
 } Game;
 
 //globals
-volatile sig_atomic_t stop = 0;
+volatile sig_atomic_t stop_all_games = 0;
 struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
 unsigned int acceptedSocketsCount = 0;
 pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -200,7 +199,7 @@ int generate_message_for_clients(int clientSocketFD, char buffer[4096]);
  * Returns: None.
  */
 void startAcceptingIncomingConnections(const int serverSocketFD) {
-    while (!stop) {
+    while (!stop_all_games) {
         // Lock mutex before checking client count
         pthread_mutex_lock(&globals_mutex);
         if (acceptedSocketsCount < MAX_CLIENTS) {
@@ -249,6 +248,13 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
  */
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
+    if (acceptedSocketsCount == 1) {
+        //add to the last game with less than 2 accepted sockets
+    } else if (acceptedSocketsCount == 0) {
+        //create new game with malloc
+    } else {
+        //initialize to be 0 again
+    }
     // Create new thread and pass socket FD as argument
     //deal with thread array
     pthread_t clientThread;
@@ -418,7 +424,7 @@ void *receiveAndPrintIncomingData(void *arg) {
     int flag_request_dir = 0;
     int flag_okay_response = 0;
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-    while (!stop) {
+    while (!stop_all_games) {
         // Initialize buffer for incoming message
         char buffer[BUFFER_SIZE] = {0};
         // Receive data from client
@@ -435,11 +441,11 @@ void *receiveAndPrintIncomingData(void *arg) {
                 }
             } else {
                 //deal with client message and make an ideal response
-                stop = generate_message_for_clients(clientSocketFD, buffer);
+                stop_all_games = generate_message_for_clients(clientSocketFD, buffer);
             }
         }
         // Exit if connection closed or server stopping
-        if (amountReceived <= CHECK_RECEIVE || stop) {
+        if (amountReceived <= CHECK_RECEIVE || stop_all_games) {
             break;
         }
     }
@@ -449,7 +455,7 @@ void *receiveAndPrintIncomingData(void *arg) {
         //send disconnect message and remove accepted socket from array
         sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
         remove_client(clientSocketFD);
-        stop = 1;
+        stop_all_games = 1;
     }
     pthread_mutex_unlock(&globals_mutex);
     close(clientSocketFD);
@@ -551,7 +557,7 @@ void handle_signal(const int signal) {
     // Print a message indicating the signal received
     printf("Caught signal %d\n", signal);
     // Set the `stop` flag to trigger cleanup
-    stop = 1;
+    stop_all_games = 1;
 }
 
 /*
