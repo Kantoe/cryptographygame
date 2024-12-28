@@ -190,6 +190,15 @@ void remove_client(int clientSocketFD);
 
 int generate_message_for_clients(int clientSocketFD, char buffer[4096]);
 
+int check_message_fields(const char *buffer);
+
+int generate_client_flag(const char *buffer, int clientSocketFD);
+
+bool check_winner(int clientSocketFD, char buffer[4096]);
+
+int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocketFD, int *flag_okay_response,
+                       int *flag_request_dir);
+
 /*
  * Starts the process of accepting incoming connections on the server socket.
  * This is the main server loop that manages client connections, enforces
@@ -267,142 +276,6 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     pthread_create(&clientThread,
                    NULL, receiveAndPrintIncomingData,
                    (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
-}
-
-int check_message_fields(const char *buffer) {
-    if (strstr(buffer, "type:") == NULL) {
-        return false;
-    }
-    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < 3) {
-        return false;
-    }
-    if (strstr(buffer, "data:") == NULL) {
-        return false;
-    }
-    return true;
-}
-
-/*
- * checks if data in buffer is type of CMD.
- * if it's CMD type checks for validity based upon banned words and allowed words.
- * if the message is not type CMD or valid CMD type.
- * received message is sent to other client.
- * Returns: None.
- */
-int check_message_received(char buffer[4096]) {
-    if (!check_message_fields(buffer)) {
-        return false;
-    }
-    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
-        CMP_EQUAL) {
-        // Validate command data
-        return check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
-    }
-    return strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) !=
-           CMP_EQUAL;
-}
-
-void remove_client(const int clientSocketFD) {
-    pthread_mutex_lock(&globals_mutex);
-    for (int i = 0; i < acceptedSocketsCount; i++) {
-        if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-            acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
-        }
-    }
-    pthread_mutex_unlock(&globals_mutex);
-    pthread_mutex_lock(&globals_mutex);
-    acceptedSocketsCount--;
-    pthread_mutex_unlock(&globals_mutex);
-}
-
-bool check_winner(const int clientSocketFD, char buffer[4096]) {
-    pthread_mutex_lock(&globals_mutex);
-    for (int i = 0; i < acceptedSocketsCount; i++) {
-        if (acceptedSockets[i].acceptedSocketFD != clientSocketFD) {
-            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, acceptedSockets[i].flag_data) == CMP_EQUAL) {
-                pthread_mutex_unlock(&globals_mutex);
-                return true;
-            }
-        }
-    }
-    pthread_mutex_unlock(&globals_mutex);
-    return false;
-}
-
-int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
-    if (acceptedSocketsCount < MAX_CLIENTS) {
-        //are there not 2 clients connected?
-        pthread_mutex_lock(&globals_mutex);
-        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-        pthread_mutex_unlock(&globals_mutex);
-    } else {
-        if (check_winner(clientSocketFD, buffer)) {
-            s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
-            sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD);
-            return true;
-        }
-        if (check_message_received(buffer)) {
-            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
-        } else {
-            s_send(clientSocketFD, INVALID_DATA,
-                   strlen(INVALID_DATA));
-        }
-    }
-    return false;
-}
-
-
-int generate_client_flag(const char *buffer, const int clientSocketFD) {
-    char flag_command[256] = {0};
-    char random_str[32] = {0};
-    generate_random_string(random_str, 31);
-    if (snprintf(flag_command, sizeof(flag_command), "echo '%s' > %s/flag.txt", random_str, buffer) < sizeof(
-            flag_command)) {
-        char flag_command_buffer[512] = {0};
-        if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
-            s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
-            for (int i = 0; i < acceptedSocketsCount; i++) {
-                if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-                    strcpy(acceptedSockets[i].flag_data, random_str);
-                    return 1;
-                }
-            }
-        }
-    }
-    return 0;
-}
-
-int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
-                       int *flag_request_dir) {
-    if (*flag_file_tries >= 5) {
-        return false;
-    }
-    if (!check_message_fields(buffer)) {
-        return false;
-    }
-    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) != CMP_EQUAL) {
-        return true;
-    }
-    if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
-        *flag_okay_response = 0;
-        *flag_request_dir = 0;
-    } else {
-        if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
-            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
-            return true;
-        }
-        if (*flag_request_dir) {
-            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
-                *flag_okay_response = 1;
-                return true;
-            }
-        }
-    }
-    if (*flag_request_dir == 0) {
-        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-        *flag_file_tries += 1;
-    }
-    return true;
 }
 
 /*
@@ -519,14 +392,140 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     return acceptedSocket;
 }
 
+int check_message_fields(const char *buffer) {
+    if (strstr(buffer, "type:") == NULL) {
+        return false;
+    }
+    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < 3) {
+        return false;
+    }
+    if (strstr(buffer, "data:") == NULL) {
+        return false;
+    }
+    return true;
+}
+
 /*
- * Cleans up and cancels client threads based on the count provided.
- * This function ensures proper thread termination and resource cleanup,
- * preventing memory leaks and zombie threads.
- * Parameters: count - The number of client threads to clean up.
+ * checks if data in buffer is type of CMD.
+ * if it's CMD type checks for validity based upon banned words and allowed words.
+ * if the message is not type CMD or valid CMD type.
+ * received message is sent to other client.
  * Returns: None.
  */
+int check_message_received(char buffer[4096]) {
+    if (!check_message_fields(buffer)) {
+        return false;
+    }
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
+        CMP_EQUAL) {
+        // Validate command data
+        return check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
+    }
+    return strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) !=
+           CMP_EQUAL;
+}
 
+void remove_client(const int clientSocketFD) {
+    pthread_mutex_lock(&globals_mutex);
+    for (int i = 0; i < acceptedSocketsCount; i++) {
+        if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
+            acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
+        }
+    }
+    pthread_mutex_unlock(&globals_mutex);
+    pthread_mutex_lock(&globals_mutex);
+    acceptedSocketsCount--;
+    pthread_mutex_unlock(&globals_mutex);
+}
+
+bool check_winner(const int clientSocketFD, char buffer[4096]) {
+    pthread_mutex_lock(&globals_mutex);
+    for (int i = 0; i < acceptedSocketsCount; i++) {
+        if (acceptedSockets[i].acceptedSocketFD != clientSocketFD) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, acceptedSockets[i].flag_data) == CMP_EQUAL) {
+                pthread_mutex_unlock(&globals_mutex);
+                return true;
+            }
+        }
+    }
+    pthread_mutex_unlock(&globals_mutex);
+    return false;
+}
+
+int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
+    if (acceptedSocketsCount < MAX_CLIENTS) {
+        //are there not 2 clients connected?
+        pthread_mutex_lock(&globals_mutex);
+        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
+        pthread_mutex_unlock(&globals_mutex);
+    } else {
+        if (check_winner(clientSocketFD, buffer)) {
+            s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
+            sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD);
+            return true;
+        }
+        if (check_message_received(buffer)) {
+            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+        } else {
+            s_send(clientSocketFD, INVALID_DATA,
+                   strlen(INVALID_DATA));
+        }
+    }
+    return false;
+}
+
+int generate_client_flag(const char *buffer, const int clientSocketFD) {
+    char flag_command[256] = {0};
+    char random_str[32] = {0};
+    generate_random_string(random_str, 31);
+    if (snprintf(flag_command, sizeof(flag_command), "echo '%s' > %s/flag.txt", random_str, buffer) < sizeof(
+            flag_command)) {
+        char flag_command_buffer[512] = {0};
+        if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
+            s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
+            for (int i = 0; i < acceptedSocketsCount; i++) {
+                if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
+                    strcpy(acceptedSockets[i].flag_data, random_str);
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
+                       int *flag_request_dir) {
+    if (*flag_file_tries >= 5) {
+        return false;
+    }
+    if (!check_message_fields(buffer)) {
+        return false;
+    }
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) != CMP_EQUAL) {
+        return true;
+    }
+    if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
+        *flag_okay_response = 0;
+        *flag_request_dir = 0;
+    } else {
+        if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
+            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
+            return true;
+        }
+        if (*flag_request_dir) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
+                *flag_okay_response = 1;
+                return true;
+            }
+        }
+    }
+    if (*flag_request_dir == 0) {
+        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+        *flag_file_tries += 1;
+    }
+    return true;
+}
 
 /*
  * Closes all accepted client sockets based on the count provided.
