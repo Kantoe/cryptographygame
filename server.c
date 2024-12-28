@@ -59,6 +59,11 @@ typedef struct {
     pthread_mutex_t game_mutex; //mutex for a game
 } Game;
 
+struct ThreadArgs {
+    Game *game;
+    int socketFD;
+};
+
 //globals
 volatile sig_atomic_t stop_all_games = 0;
 struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
