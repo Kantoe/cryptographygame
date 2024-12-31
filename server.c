@@ -16,7 +16,7 @@
 //defines
 #define CORRECT_ARGC 2
 #define SERVER_IP "0.0.0.0"
-#define CLIENT_MAX "tlength:61;type:ERR;length:26;data:max 2 clients can connect\n"
+#define GAME_MAX "tlength:54;type:ERR;length:19;data:game limit reached\n"
 #define INVALID_DATA "tlength:55;type:ERR;length:20;data:command not allowed\n"
 #define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
 #define SECOND_CLIENT_DISCONNECTED "tlength:66;type:ERR;length:31;data:\nSecond client disconnected ):\n"
@@ -65,10 +65,11 @@ struct ThreadArgs {
 };
 
 //globals
+Game *games[10] = {NULL};
 volatile sig_atomic_t stop_all_games = 0;
-struct AcceptedSocket acceptedSockets[MAX_CLIENTS] = {};
-unsigned int acceptedSocketsCount = 0;
-pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
+unsigned int acceptedSocketsCountForGame = 0;
+unsigned int acceptedGames = 0;
+//pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 //Mutex for globals
 
 //prototypes
@@ -137,24 +138,7 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  * (to exclude it from receiving its own message).
  * Returns: None.
  */
-void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD);
-
-/*
- * Cleans up and cancels client threads based on the count provided.
- * This function ensures proper thread termination and resource cleanup,
- * preventing memory leaks and zombie threads.
- * Parameters: count - The number of client threads to clean up.
- * Returns: None.
- */
-
-/*
- * Closes all accepted client sockets based on the count provided.
- * This function handles the cleanup of network resources,
- * ensuring all connections are properly terminated.
- * Parameters: count - The number of accepted client sockets to close.
- * Returns: None.
- */
-void cleanupClientSockets(int count);
+void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD, const Game *game);
 
 /*
  * Initializes the server socket, binds it to the specified port,
@@ -191,18 +175,16 @@ int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_addr
  */
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
 
-void remove_client(int clientSocketFD);
-
-int generate_message_for_clients(int clientSocketFD, char buffer[4096]);
+int generate_message_for_clients(int clientSocketFD, char buffer[4096], const Game *game);
 
 int check_message_fields(const char *buffer);
 
-int generate_client_flag(const char *buffer, int clientSocketFD);
+int generate_client_flag(const char *buffer, int clientSocketFD, Game *game);
 
-bool check_winner(int clientSocketFD, char buffer[4096]);
+bool check_winner(int clientSocketFD, char buffer[4096], const Game *game);
 
 int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocketFD, int *flag_okay_response,
-                       int *flag_request_dir);
+                       int *flag_request_dir, Game *game);
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -215,36 +197,27 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocke
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop_all_games) {
         // Lock mutex before checking client count
-        pthread_mutex_lock(&globals_mutex);
-        if (acceptedSocketsCount < MAX_CLIENTS) {
+        //pthread_mutex_lock(&globals_mutex);
+        if (acceptedGames < 10) {
             // Unlock mutex before accepting new connection
-            pthread_mutex_unlock(&globals_mutex);
+            //pthread_mutex_unlock(&globals_mutex);
             struct AcceptedSocket clientSocket =
                     acceptIncomingConnection(serverSocketFD);
 
             // If connection accepted successfully, add to active clients
             if (clientSocket.acceptedSuccessfully) {
                 // Lock mutex before updating shared data
-                pthread_mutex_lock(&globals_mutex);
-                for (int i = 0; i < MAX_CLIENTS; i++) {
-                    //choose where to add client in array
-                    if (!acceptedSockets[i].acceptedSuccessfully || acceptedSockets[i].acceptedSocketFD ==
-                        SOCKET_ERROR) {
-                        acceptedSockets[i] = clientSocket;
-                        acceptedSocketsCount++;
-                        break;
-                    }
-                }
+                //pthread_mutex_lock(&globals_mutex);
                 receiveAndPrintIncomingDataOnSeparateThread(&clientSocket);
-                pthread_mutex_unlock(&globals_mutex);
+                //pthread_mutex_unlock(&globals_mutex);
             }
         } else {
             // Server at capacity, reject new connection
-            pthread_mutex_unlock(&globals_mutex);
+            //pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
             // Send max clients error message
-            s_send(clientSocketFD, CLIENT_MAX,
-                   strlen(CLIENT_MAX));
+            s_send(clientSocketFD, GAME_MAX,
+                   strlen(GAME_MAX));
             close(clientSocketFD);
         }
         // Sleep to prevent CPU overload
@@ -262,25 +235,34 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
  */
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
-    if (acceptedSocketsCount == 1) {
+    if (acceptedSocketsCountForGame == 1) {
+        games[0]->acceptedSocketsCount = 2;
+        games[0]->game_clients[1] = *clientSocketFD;
         //add to the last game with less than 2 accepted sockets
-    } else if (acceptedSocketsCount == 0) {
+    } else if (acceptedSocketsCountForGame == 0) {
         //create new game with malloc
-    } else {
-        //initialize to be 0 again
+        Game *game = malloc(sizeof(Game));
+        game->acceptedSocketsCount = 1;
+        game->game_clients[0] = *clientSocketFD;
+        pthread_mutex_init(&game->game_mutex, NULL);
+        game->stop_game = false;
+        games[0] = game;
+        acceptedSocketsCountForGame = 1;
+    }
+    // Dynamically allocate memory for thread arguments
+    struct ThreadArgs *clientThreadArgs = malloc(sizeof(struct ThreadArgs));
+    if (!clientThreadArgs) {
+        perror("Failed to allocate memory for ThreadArgs");
+        return;
     }
     // Create new thread and pass socket FD as argument
-    //deal with thread array
+    clientThreadArgs->socketFD = clientSocketFD->acceptedSocketFD;
+    clientThreadArgs->game = games[0];
     pthread_t clientThread;
-    /*Game *game = malloc(sizeof(Game));
-    game->acceptedSocketFD = clientSocketFD->acceptedSocketFD;
-    pthread_create(&clientThread,
-                   NULL, receiveAndPrintIncomingData,
-                   game);
-    free(game);*/
-    pthread_create(&clientThread,
-                   NULL, receiveAndPrintIncomingData,
-                   (void *) (intptr_t) clientSocketFD->acceptedSocketFD);
+    if (pthread_create(&clientThread, NULL, receiveAndPrintIncomingData, clientThreadArgs) != 0) {
+        perror("Failed to create thread");
+        free(clientThreadArgs); // Free allocated memory on failure
+    }
 }
 
 /*
@@ -295,14 +277,14 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  */
 void *receiveAndPrintIncomingData(void *arg) {
     pthread_detach(pthread_self());
-    // Cast void pointer back to socket FD
-    const int clientSocketFD = (intptr_t) arg;
-    //const int clientSocketFD = ((Game *) arg)->acceptedSocketFD;
+    const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
+    Game *game = ((struct ThreadArgs *) arg)->game;
+    free(arg);
     int flag_file_tries = 0;
     int flag_request_dir = 0;
     int flag_okay_response = 0;
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-    while (!stop_all_games) {
+    while (!stop_all_games && !game->stop_game) {
         // Initialize buffer for incoming message
         char buffer[BUFFER_SIZE] = {0};
         // Receive data from client
@@ -314,31 +296,26 @@ void *receiveAndPrintIncomingData(void *arg) {
             printf("%s\n", buffer);
             if (!(flag_okay_response && flag_request_dir)) {
                 if (!handle_client_flag(buffer, &flag_file_tries, clientSocketFD, &flag_okay_response,
-                                        &flag_request_dir)) {
+                                        &flag_request_dir, game)) {
                     break;
                 }
             } else {
                 //deal with client message and make an ideal response
-                stop_all_games = generate_message_for_clients(clientSocketFD, buffer);
+                game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
             }
         }
         // Exit if connection closed or server stopping
-        if (amountReceived <= CHECK_RECEIVE || stop_all_games) {
+        if (amountReceived <= CHECK_RECEIVE || stop_all_games || game->stop_game) {
             break;
         }
     }
-    pthread_mutex_lock(&globals_mutex);
-    if (acceptedSocketsCount > 0) {
-        pthread_mutex_unlock(&globals_mutex);
-        //send disconnect message and remove accepted socket from array
-        sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD);
-        remove_client(clientSocketFD);
-        stop_all_games = 1;
-    }
-    pthread_mutex_unlock(&globals_mutex);
+    //send disconnect message and remove accepted socket from array
+    sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
+    game->stop_game = true;
     close(clientSocketFD);
     return NULL;
 }
+
 
 /*
  * Sends received messages from one client to all other connected clients.
@@ -350,21 +327,21 @@ void *receiveAndPrintIncomingData(void *arg) {
  * (to exclude it from receiving its own message).
  * Returns: None.
  */
-void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD) {
+void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD, const Game *game) {
     // Lock mutex before accessing shared client data
-    pthread_mutex_lock(&globals_mutex);
+    //pthread_mutex_lock(&globals_mutex);
 
     // Iterate through all connected clients
-    for (int i = 0; i < acceptedSocketsCount; i++) {
+    for (int i = 0; i < game->acceptedSocketsCount; i++) {
         // Skip sender's socket
-        if (acceptedSockets[i].acceptedSocketFD != socketFD) {
+        if (game->game_clients[i].acceptedSocketFD != socketFD) {
             // Forward message to other client
-            s_send(acceptedSockets[i].acceptedSocketFD, buffer, strlen(buffer));
+            s_send(game->game_clients[i].acceptedSocketFD, buffer, strlen(buffer));
         }
     }
 
     // Release mutex after broadcasting
-    pthread_mutex_unlock(&globals_mutex);
+    //pthread_mutex_unlock(&globals_mutex);
 }
 
 /*
@@ -430,47 +407,34 @@ int check_message_received(char buffer[4096]) {
            CMP_EQUAL;
 }
 
-void remove_client(const int clientSocketFD) {
-    pthread_mutex_lock(&globals_mutex);
-    for (int i = 0; i < acceptedSocketsCount; i++) {
-        if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-            acceptedSockets[i].acceptedSocketFD = SOCKET_ERROR;
-        }
-    }
-    pthread_mutex_unlock(&globals_mutex);
-    pthread_mutex_lock(&globals_mutex);
-    acceptedSocketsCount--;
-    pthread_mutex_unlock(&globals_mutex);
-}
-
-bool check_winner(const int clientSocketFD, char buffer[4096]) {
-    pthread_mutex_lock(&globals_mutex);
-    for (int i = 0; i < acceptedSocketsCount; i++) {
-        if (acceptedSockets[i].acceptedSocketFD != clientSocketFD) {
-            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, acceptedSockets[i].flag_data) == CMP_EQUAL) {
-                pthread_mutex_unlock(&globals_mutex);
+bool check_winner(const int clientSocketFD, char buffer[4096], const Game *game) {
+    //pthread_mutex_lock(&globals_mutex);
+    for (int i = 0; i < game->acceptedSocketsCount; i++) {
+        if (game->game_clients[i].acceptedSocketFD != clientSocketFD) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, game->game_clients[i].flag_data) == CMP_EQUAL) {
+                //pthread_mutex_unlock(&globals_mutex);
                 return true;
             }
         }
     }
-    pthread_mutex_unlock(&globals_mutex);
+    //pthread_mutex_unlock(&globals_mutex);
     return false;
 }
 
-int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
-    if (acceptedSocketsCount < MAX_CLIENTS) {
+int generate_message_for_clients(const int clientSocketFD, char buffer[4096], const Game *game) {
+    if (game->acceptedSocketsCount < MAX_CLIENTS) {
         //are there not 2 clients connected?
-        pthread_mutex_lock(&globals_mutex);
+        //pthread_mutex_lock(&globals_mutex);
         s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-        pthread_mutex_unlock(&globals_mutex);
+        //pthread_mutex_unlock(&globals_mutex);
     } else {
-        if (check_winner(clientSocketFD, buffer)) {
+        if (check_winner(clientSocketFD, buffer, game)) {
             s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
-            sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD);
+            sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD, game);
             return true;
         }
         if (check_message_received(buffer)) {
-            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD);
+            sendReceivedMessageToTheOtherClients(buffer, clientSocketFD, game);
         } else {
             s_send(clientSocketFD, INVALID_DATA,
                    strlen(INVALID_DATA));
@@ -479,7 +443,7 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096]) {
     return false;
 }
 
-int generate_client_flag(const char *buffer, const int clientSocketFD) {
+int generate_client_flag(const char *buffer, const int clientSocketFD, Game *game) {
     char flag_command[256] = {0};
     char random_str[32] = {0};
     generate_random_string(random_str, 31);
@@ -488,9 +452,9 @@ int generate_client_flag(const char *buffer, const int clientSocketFD) {
         char flag_command_buffer[512] = {0};
         if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
             s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
-            for (int i = 0; i < acceptedSocketsCount; i++) {
-                if (acceptedSockets[i].acceptedSocketFD == clientSocketFD) {
-                    strcpy(acceptedSockets[i].flag_data, random_str);
+            for (int i = 0; i < game->acceptedSocketsCount; i++) {
+                if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
+                    strcpy(game->game_clients[i].flag_data, random_str);
                     return 1;
                 }
             }
@@ -500,7 +464,7 @@ int generate_client_flag(const char *buffer, const int clientSocketFD) {
 }
 
 int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
-                       int *flag_request_dir) {
+                       int *flag_request_dir, Game *game) {
     if (*flag_file_tries >= 5) {
         return false;
     }
@@ -515,7 +479,7 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
         *flag_request_dir = 0;
     } else {
         if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
-            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD);
+            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD, game);
             return true;
         }
         if (*flag_request_dir) {
@@ -530,23 +494,6 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
         *flag_file_tries += 1;
     }
     return true;
-}
-
-/*
- * Closes all accepted client sockets based on the count provided.
- * This function handles the cleanup of network resources,
- * ensuring all connections are properly terminated.
- * Parameters: count - The number of accepted client sockets to close.
- * Returns: None.
- */
-void cleanupClientSockets(const int count) {
-    // Iterate through all client sockets
-    for (int i = 0; i < count; i++) {
-        // Close active sockets
-        if (acceptedSockets[i].acceptedSocketFD > CLIENT_SOCKET_EXISTS) {
-            close(acceptedSockets[i].acceptedSocketFD);
-        }
-    }
 }
 
 /*
@@ -663,10 +610,10 @@ int main(const int argc, char *argv[]) {
     startAcceptingIncomingConnections(serverSocketFD);
 
     // Cleanup resources
-    cleanupClientSockets(acceptedSocketsCount);
+    //cleanupClientSockets(acceptedSocketsCount);
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
-    pthread_mutex_destroy(&globals_mutex);
+    //pthread_mutex_destroy(&globals_mutex);
 
     return 0;
 }
