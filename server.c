@@ -258,6 +258,7 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     // Create new thread and pass socket FD as argument
     clientThreadArgs->socketFD = clientSocketFD->acceptedSocketFD;
     clientThreadArgs->game = games[0];
+    printf("Creating game at address: %p\n", (void *) clientThreadArgs->game);
     pthread_t clientThread;
     if (pthread_create(&clientThread, NULL, receiveAndPrintIncomingData, clientThreadArgs) != 0) {
         perror("Failed to create thread");
@@ -280,11 +281,19 @@ void *receiveAndPrintIncomingData(void *arg) {
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
     free(arg);
+    printf("Thread %lu: Address of game: %p\n", pthread_self(), (void *) game);
     int flag_file_tries = 0;
     int flag_request_dir = 0;
     int flag_okay_response = 0;
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-    while (!stop_all_games && !game->stop_game) {
+    while (!stop_all_games) {
+        pthread_mutex_lock(&game->game_mutex);
+        if (game->stop_game) {
+            pthread_mutex_unlock(&game->game_mutex);
+            break;
+        }
+        pthread_mutex_unlock(&game->game_mutex);
+
         // Initialize buffer for incoming message
         char buffer[BUFFER_SIZE] = {0};
         // Receive data from client
@@ -301,7 +310,9 @@ void *receiveAndPrintIncomingData(void *arg) {
                 }
             } else {
                 //deal with client message and make an ideal response
+                pthread_mutex_lock(&game->game_mutex);
                 game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
+                pthread_mutex_unlock(&game->game_mutex);
             }
         }
         // Exit if connection closed or server stopping
@@ -311,7 +322,9 @@ void *receiveAndPrintIncomingData(void *arg) {
     }
     //send disconnect message and remove accepted socket from array
     sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
+    pthread_mutex_lock(&game->game_mutex);
     game->stop_game = true;
+    pthread_mutex_unlock(&game->game_mutex);
     close(clientSocketFD);
     return NULL;
 }
@@ -497,7 +510,7 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
 }
 
 /*
- * Handles signals, specifically SIGINT (press ctrl+c)
+ * Handles signal, specifically SIGINT (press ctrl+c)
  * (interrupt signal) to safely terminate the server.
  * This function ensures proper cleanup of resources when
  * the server is interrupted, preventing memory leaks and
