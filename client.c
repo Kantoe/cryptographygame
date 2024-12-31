@@ -39,6 +39,7 @@ pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 volatile bool ready_to_print = true;
 char flag_path[512] = {0};
+int socketFD = -1;
 
 //prototypes
 
@@ -414,6 +415,10 @@ void delete_flag_file() {
 void termination_handler(const int signal) {
     printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
     delete_flag_file();
+    pthread_mutex_destroy(&cwd_mutex);
+    pthread_mutex_destroy(&sync_mutex);
+    pthread_cond_destroy(&sync_cond);
+    close(socketFD);
     exit(EXIT_FAILURE);
 }
 
@@ -441,7 +446,7 @@ int main(const int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     // Initialize socket and start client
-    const int socketFD = initClientSocket(argv[IP_ARGV], argv[PORT_ARGV]);
+    socketFD = initClientSocket(argv[IP_ARGV], argv[PORT_ARGV]);
     if (socketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
