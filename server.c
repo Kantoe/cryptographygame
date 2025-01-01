@@ -57,6 +57,7 @@ typedef struct {
     struct AcceptedSocket game_clients[MAX_CLIENTS]; //array of two client sockets
     unsigned int acceptedSocketsCount; //num of clients in a game; max 2
     pthread_mutex_t game_mutex; //mutex for a game
+    int stop_pipe[2]; // Pipe for stopping the game
 } Game;
 
 struct ThreadArgs {
@@ -138,7 +139,7 @@ void receiveAndPrintIncomingDataOnSeparateThread(
  * (to exclude it from receiving its own message).
  * Returns: None.
  */
-void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD, const Game *game);
+void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD, Game *game);
 
 /*
  * Initializes the server socket, binds it to the specified port,
@@ -175,13 +176,13 @@ int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_addr
  */
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
 
-int generate_message_for_clients(int clientSocketFD, char buffer[4096], const Game *game);
+int generate_message_for_clients(int clientSocketFD, char buffer[4096], Game *game);
 
 int check_message_fields(const char *buffer);
 
 int generate_client_flag(const char *buffer, int clientSocketFD, Game *game);
 
-bool check_winner(int clientSocketFD, char buffer[4096], const Game *game);
+bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
 
 int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocketFD, int *flag_okay_response,
                        int *flag_request_dir, Game *game);
@@ -235,9 +236,13 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
  */
 void receiveAndPrintIncomingDataOnSeparateThread(
     const struct AcceptedSocket *clientSocketFD) {
+    //instead of acceptedsocketscountforgame search for games with
+    //one client first with stop_game = 0 and add to them
+    //if not found malloc for another where the first NULL is found in games array
     if (acceptedSocketsCountForGame == 1) {
         games[0]->acceptedSocketsCount = 2;
         games[0]->game_clients[1] = *clientSocketFD;
+        acceptedSocketsCountForGame = 0;
         //add to the last game with less than 2 accepted sockets
     } else if (acceptedSocketsCountForGame == 0) {
         //create new game with malloc
@@ -246,6 +251,12 @@ void receiveAndPrintIncomingDataOnSeparateThread(
         game->game_clients[0] = *clientSocketFD;
         pthread_mutex_init(&game->game_mutex, NULL);
         game->stop_game = false;
+        // Initialize the stop_pipe
+        if (pipe(game->stop_pipe) == -1) {
+            perror("Failed to create pipe for Game");
+            free(game);
+            return;
+        }
         games[0] = game;
         acceptedSocketsCountForGame = 1;
     }
@@ -258,12 +269,54 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     // Create new thread and pass socket FD as argument
     clientThreadArgs->socketFD = clientSocketFD->acceptedSocketFD;
     clientThreadArgs->game = games[0];
-    printf("Creating game at address: %p\n", (void *) clientThreadArgs->game);
     pthread_t clientThread;
     if (pthread_create(&clientThread, NULL, receiveAndPrintIncomingData, clientThreadArgs) != 0) {
         perror("Failed to create thread");
         free(clientThreadArgs); // Free allocated memory on failure
     }
+}
+
+void thread_exit(const int clientSocketFD, Game *game) {
+    //send disconnect message and remove accepted socket from array
+    sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
+    pthread_mutex_lock(&game->game_mutex);
+    if (game->acceptedSocketsCount > 0) {
+        game->acceptedSocketsCount--;
+    }
+    // Write to the pipe to signal that the game should stop
+    const char signal = 'N';
+    write(game->stop_pipe[1], &signal, sizeof(signal)); // Writing to stop the game
+    game->stop_game = true;
+    pthread_mutex_unlock(&game->game_mutex);
+    close(clientSocketFD);
+}
+
+bool handle_received_data(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
+                          int *flag_okay_response) {
+    // Initialize buffer for incoming message
+    char buffer[BUFFER_SIZE] = {0};
+    // Receive data from client
+    const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
+    if (amountReceived > CHECK_RECEIVE) {
+        // Null terminate received message
+        buffer[amountReceived] = NULL_CHAR;
+        // Log received message
+        printf("%s\n", buffer);
+        if (!(flag_okay_response && flag_request_dir)) {
+            if (!handle_client_flag(buffer, flag_file_tries, clientSocketFD, flag_okay_response,
+                                    flag_request_dir, game)) {
+                return true;
+            }
+        } else {
+            //deal with client message and make an ideal response
+            game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
+        }
+    }
+    // Exit if connection closed or server stopping
+    if (amountReceived <= CHECK_RECEIVE || stop_all_games || game->stop_game) {
+        return true;
+    }
+    return false;
 }
 
 /*
@@ -281,51 +334,35 @@ void *receiveAndPrintIncomingData(void *arg) {
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
     free(arg);
-    printf("Thread %lu: Address of game: %p\n", pthread_self(), (void *) game);
     int flag_file_tries = 0;
     int flag_request_dir = 0;
     int flag_okay_response = 0;
+    const int max_fd = clientSocketFD > game->stop_pipe[0] ? clientSocketFD : game->stop_pipe[0];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-    while (!stop_all_games) {
-        pthread_mutex_lock(&game->game_mutex);
-        if (game->stop_game) {
-            pthread_mutex_unlock(&game->game_mutex);
+    while (!stop_all_games && !game->stop_game) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(clientSocketFD, &readfds);
+        FD_SET(game->stop_pipe[0], &readfds);
+        // Use select with a timeout
+        struct timeval timeout = {1, 0}; // 1-second timeout
+        const int ret = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
+        if (ret < 0) {
+            perror("select");
             break;
         }
-        pthread_mutex_unlock(&game->game_mutex);
-
-        // Initialize buffer for incoming message
-        char buffer[BUFFER_SIZE] = {0};
-        // Receive data from client
-        const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
-        if (amountReceived > CHECK_RECEIVE) {
-            // Null terminate received message
-            buffer[amountReceived] = NULL_CHAR;
-            // Log received message
-            printf("%s\n", buffer);
-            if (!(flag_okay_response && flag_request_dir)) {
-                if (!handle_client_flag(buffer, &flag_file_tries, clientSocketFD, &flag_okay_response,
-                                        &flag_request_dir, game)) {
-                    break;
-                }
-            } else {
-                //deal with client message and make an ideal response
-                pthread_mutex_lock(&game->game_mutex);
-                game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
-                pthread_mutex_unlock(&game->game_mutex);
-            }
-        }
-        // Exit if connection closed or server stopping
-        if (amountReceived <= CHECK_RECEIVE || stop_all_games || game->stop_game) {
+        // Check if the pipe was written to
+        if (FD_ISSET(game->stop_pipe[0], &readfds)) {
+            char buf[1];
+            read(game->stop_pipe[0], buf, sizeof(buf)); // Clear the pipe
             break;
+        }
+        if (FD_ISSET(clientSocketFD, &readfds)) {
+            if (handle_received_data(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response))
+                break;
         }
     }
-    //send disconnect message and remove accepted socket from array
-    sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
-    pthread_mutex_lock(&game->game_mutex);
-    game->stop_game = true;
-    pthread_mutex_unlock(&game->game_mutex);
-    close(clientSocketFD);
+    thread_exit(clientSocketFD, game);
     return NULL;
 }
 
@@ -340,9 +377,9 @@ void *receiveAndPrintIncomingData(void *arg) {
  * (to exclude it from receiving its own message).
  * Returns: None.
  */
-void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD, const Game *game) {
+void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD, Game *game) {
     // Lock mutex before accessing shared client data
-    //pthread_mutex_lock(&globals_mutex);
+    pthread_mutex_lock(&game->game_mutex);
 
     // Iterate through all connected clients
     for (int i = 0; i < game->acceptedSocketsCount; i++) {
@@ -354,7 +391,7 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD
     }
 
     // Release mutex after broadcasting
-    //pthread_mutex_unlock(&globals_mutex);
+    pthread_mutex_unlock(&game->game_mutex);
 }
 
 /*
@@ -420,27 +457,28 @@ int check_message_received(char buffer[4096]) {
            CMP_EQUAL;
 }
 
-bool check_winner(const int clientSocketFD, char buffer[4096], const Game *game) {
-    //pthread_mutex_lock(&globals_mutex);
+bool check_winner(const int clientSocketFD, char buffer[4096], Game *game) {
+    pthread_mutex_lock(&game->game_mutex);
     for (int i = 0; i < game->acceptedSocketsCount; i++) {
         if (game->game_clients[i].acceptedSocketFD != clientSocketFD) {
             if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, game->game_clients[i].flag_data) == CMP_EQUAL) {
-                //pthread_mutex_unlock(&globals_mutex);
+                pthread_mutex_unlock(&game->game_mutex);
                 return true;
             }
         }
     }
-    //pthread_mutex_unlock(&globals_mutex);
+    pthread_mutex_unlock(&game->game_mutex);
     return false;
 }
 
-int generate_message_for_clients(const int clientSocketFD, char buffer[4096], const Game *game) {
+int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Game *game) {
+    pthread_mutex_lock(&game->game_mutex);
     if (game->acceptedSocketsCount < MAX_CLIENTS) {
+        pthread_mutex_unlock(&game->game_mutex);
         //are there not 2 clients connected?
-        //pthread_mutex_lock(&globals_mutex);
         s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-        //pthread_mutex_unlock(&globals_mutex);
     } else {
+        pthread_mutex_unlock(&game->game_mutex);
         if (check_winner(clientSocketFD, buffer, game)) {
             s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
             sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD, game);
