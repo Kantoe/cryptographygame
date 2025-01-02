@@ -42,6 +42,7 @@
 #define DATA_OFFSET 5
 #define WIN_MSG "tlength:45;type:OUT;length:10;data:\nyou won!\n"
 #define LOSE_MSG "tlength:48;type:OUT;length:13;data:\nyou lost ):\n"
+#define MAX_GAMES 10
 
 //data types
 struct AcceptedSocket {
@@ -66,7 +67,7 @@ struct ThreadArgs {
 };
 
 //globals
-Game *games[10] = {NULL};
+Game *games[MAX_GAMES] = {NULL};
 volatile sig_atomic_t stop_all_games = 0;
 unsigned int acceptedGames = 0;
 
@@ -215,7 +216,7 @@ void close_all_games();
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop_all_games) {
         // Lock mutex before checking client count
-        if (acceptedGames < 10) {
+        if (acceptedGames < MAX_GAMES) {
             // Unlock mutex before accepting new connection
             struct AcceptedSocket clientSocket =
                     acceptIncomingConnection(serverSocketFD);
@@ -265,7 +266,7 @@ void handle_single_client_on_separate_thread(
 }
 
 int find_active_game() {
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < MAX_GAMES; i++) {
         if (games[i]) {
             pthread_mutex_lock(&games[i]->game_mutex);
             if (!games[i]->stop_game && games[i]->acceptedSocketsCount == 1) {
@@ -279,7 +280,7 @@ int find_active_game() {
 }
 
 int find_inactive_game() {
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < MAX_GAMES; i++) {
         if (!games[i]) {
             return i;
         }
@@ -629,7 +630,7 @@ void handle_signal(const int signal) {
 }
 
 void handle_closed_games() {
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < MAX_GAMES; i++) {
         if (games[i]) {
             pthread_mutex_lock(&games[i]->game_mutex);
             if (games[i]->stop_game && games[i]->acceptedSocketsCount == 0) {
@@ -649,7 +650,7 @@ void handle_closed_games() {
 }
 
 void close_all_games() {
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < MAX_GAMES; i++) {
         if (games[i]) {
             close(games[i]->stop_pipe[0]);
             close(games[i]->stop_pipe[1]);
