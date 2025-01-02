@@ -291,8 +291,9 @@ void thread_exit(const int clientSocketFD, Game *game) {
     close(clientSocketFD);
 }
 
-bool handle_received_data(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
-                          int *flag_okay_response) {
+
+bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
+                            int *flag_okay_response) {
     // Initialize buffer for incoming message
     char buffer[BUFFER_SIZE] = {0};
     // Receive data from client
@@ -302,7 +303,7 @@ bool handle_received_data(const int clientSocketFD, Game *game, int *flag_file_t
         buffer[amountReceived] = NULL_CHAR;
         // Log received message
         printf("%s\n", buffer);
-        if (!(flag_okay_response && flag_request_dir)) {
+        if (!(*flag_okay_response && *flag_request_dir)) {
             if (!handle_client_flag(buffer, flag_file_tries, clientSocketFD, flag_okay_response,
                                     flag_request_dir, game)) {
                 return true;
@@ -358,7 +359,7 @@ void *receiveAndPrintIncomingData(void *arg) {
             break;
         }
         if (FD_ISSET(clientSocketFD, &readfds)) {
-            if (handle_received_data(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response))
+            if (handle_client_messages(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response))
                 break;
         }
     }
