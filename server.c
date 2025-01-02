@@ -291,7 +291,6 @@ void thread_exit(const int clientSocketFD, Game *game) {
     close(clientSocketFD);
 }
 
-
 bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
                             int *flag_okay_response) {
     // Initialize buffer for incoming message
@@ -366,7 +365,6 @@ void *receiveAndPrintIncomingData(void *arg) {
     thread_exit(clientSocketFD, game);
     return NULL;
 }
-
 
 /*
  * Sends received messages from one client to all other connected clients.
