@@ -68,7 +68,6 @@ struct ThreadArgs {
 //globals
 Game *games[10] = {NULL};
 volatile sig_atomic_t stop_all_games = 0;
-pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 unsigned int acceptedGames = 0;
 
 //prototypes
@@ -201,6 +200,10 @@ void thread_exit(int clientSocketFD, Game *game);
 bool handle_client_messages(int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
                             int *flag_okay_response);
 
+void handle_closed_games();
+
+void close_all_games();
+
 /*
  * Starts the process of accepting incoming connections on the server socket.
  * This is the main server loop that manages client connections, enforces
@@ -212,10 +215,8 @@ bool handle_client_messages(int clientSocketFD, Game *game, int *flag_file_tries
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop_all_games) {
         // Lock mutex before checking client count
-        pthread_mutex_lock(&globals_mutex);
         if (acceptedGames < 10) {
             // Unlock mutex before accepting new connection
-            pthread_mutex_unlock(&globals_mutex);
             struct AcceptedSocket clientSocket =
                     acceptIncomingConnection(serverSocketFD);
 
@@ -226,13 +227,13 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             }
         } else {
             // Server at capacity, reject new connection
-            pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
             // Send max clients error message
             s_send(clientSocketFD, GAME_MAX,
                    strlen(GAME_MAX));
             close(clientSocketFD);
         }
+        handle_closed_games();
         // Sleep to prevent CPU overload
         usleep(SLEEP);
     }
@@ -264,31 +265,25 @@ void handle_single_client_on_separate_thread(
 }
 
 int find_active_game() {
-    pthread_mutex_lock(&globals_mutex);
     for (int i = 0; i < 10; i++) {
         if (games[i]) {
             pthread_mutex_lock(&games[i]->game_mutex);
             if (!games[i]->stop_game && games[i]->acceptedSocketsCount == 1) {
                 pthread_mutex_unlock(&games[i]->game_mutex);
-                pthread_mutex_unlock(&globals_mutex);
                 return i;
             }
             pthread_mutex_unlock(&games[i]->game_mutex);
         }
     }
-    pthread_mutex_unlock(&globals_mutex);
     return -1;
 }
 
 int find_inactive_game() {
-    pthread_mutex_lock(&globals_mutex);
     for (int i = 0; i < 10; i++) {
         if (!games[i]) {
-            pthread_mutex_unlock(&globals_mutex);
             return i;
         }
     }
-    pthread_mutex_unlock(&globals_mutex);
     return -1;
 }
 
@@ -309,9 +304,8 @@ bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inacti
         free(game);
         return true;
     }
-    pthread_mutex_lock(&globals_mutex);
     games[inactive_game_index] = game;
-    pthread_mutex_unlock(&globals_mutex);
+    acceptedGames++;
     return false;
 }
 
@@ -347,9 +341,6 @@ void add_client_to_game(const struct AcceptedSocket *clientSocketFD, const int a
     games[active_game_index]->acceptedSocketsCount = 2;
     games[active_game_index]->game_clients[1] = *clientSocketFD;
     pthread_mutex_unlock(&games[active_game_index]->game_mutex);
-    pthread_mutex_lock(&globals_mutex);
-    acceptedGames++;
-    pthread_mutex_unlock(&globals_mutex);
 }
 
 /*
@@ -637,6 +628,40 @@ void handle_signal(const int signal) {
     stop_all_games = 1;
 }
 
+void handle_closed_games() {
+    for (int i = 0; i < 10; i++) {
+        if (games[i]) {
+            pthread_mutex_lock(&games[i]->game_mutex);
+            if (games[i]->stop_game && games[i]->acceptedSocketsCount == 0) {
+                close(games[i]->stop_pipe[0]);
+                close(games[i]->stop_pipe[1]);
+                pthread_mutex_unlock(&games[i]->game_mutex);
+                pthread_mutex_destroy(&games[i]->game_mutex);
+                free(games[i]);
+                games[i] = NULL;
+                printf("\033[1;4;32;47mFreed game %d\033[0m\n", i);
+                acceptedGames--;
+            } else {
+                pthread_mutex_unlock(&games[i]->game_mutex);
+            }
+        }
+    }
+}
+
+void close_all_games() {
+    for (int i = 0; i < 10; i++) {
+        if (games[i]) {
+            close(games[i]->stop_pipe[0]);
+            close(games[i]->stop_pipe[1]);
+            pthread_mutex_destroy(&games[i]->game_mutex);
+            free(games[i]);
+            games[i] = NULL;
+            printf("\033[1;4;32;47mFreed game %d\033[0m\n", i);
+            acceptedGames--;
+        }
+    }
+}
+
 /*
  * creates server socket and address for it.
  * returns 1 for failure 0 for success.
@@ -732,9 +757,8 @@ int main(const int argc, char *argv[]) {
     // Start server main loop
     startAcceptingIncomingConnections(serverSocketFD);
     // Cleanup resources
+    close_all_games();
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
-    pthread_mutex_destroy(&globals_mutex);
-
     return 0;
 }

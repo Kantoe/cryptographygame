@@ -262,7 +262,7 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         pthread_mutex_unlock(&cwd_mutex);
         free(command);
     } else if (strcmp(current_type, "ERR") == CMP_EQUAL) {
-        fprintf(stderr, "%.*s", n, current_data);
+        fprintf(stderr, "\033[1;31m%.*s\033[0m", n, current_data);
     } else if (strcmp(current_type, "CWD") == CMP_EQUAL) {
         pthread_mutex_lock(&cwd_mutex);
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
