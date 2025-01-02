@@ -106,7 +106,7 @@ struct AcceptedSocket acceptIncomingConnection(int serverSocketFD);
  * file descriptor cast to void*.
  * Returns: NULL upon completion.
  */
-void *receiveAndPrintIncomingData(void *arg);
+void *handle_single_client(void *arg);
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -126,7 +126,7 @@ void startAcceptingIncomingConnections(int serverSocketFD);
  * containing the client socket file descriptor.
  * Returns: None.
  */
-void receiveAndPrintIncomingDataOnSeparateThread(
+void handle_single_client_on_separate_thread(
     const struct AcceptedSocket *clientSocketFD);
 
 /*
@@ -209,7 +209,7 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             if (clientSocket.acceptedSuccessfully) {
                 // Lock mutex before updating shared data
                 //pthread_mutex_lock(&globals_mutex);
-                receiveAndPrintIncomingDataOnSeparateThread(&clientSocket);
+                handle_single_client_on_separate_thread(&clientSocket);
                 //pthread_mutex_unlock(&globals_mutex);
             }
         } else {
@@ -234,7 +234,7 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
  * containing the client socket file descriptor.
  * Returns: None.
  */
-void receiveAndPrintIncomingDataOnSeparateThread(
+void handle_single_client_on_separate_thread(
     const struct AcceptedSocket *clientSocketFD) {
     //instead of acceptedsocketscountforgame search for games with
     //one client first with stop_game = 0 and add to them
@@ -270,7 +270,7 @@ void receiveAndPrintIncomingDataOnSeparateThread(
     clientThreadArgs->socketFD = clientSocketFD->acceptedSocketFD;
     clientThreadArgs->game = games[0];
     pthread_t clientThread;
-    if (pthread_create(&clientThread, NULL, receiveAndPrintIncomingData, clientThreadArgs) != 0) {
+    if (pthread_create(&clientThread, NULL, handle_single_client, clientThreadArgs) != 0) {
         perror("Failed to create thread");
         free(clientThreadArgs); // Free allocated memory on failure
     }
@@ -329,7 +329,7 @@ bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file
  * file descriptor cast to void*.
  * Returns: NULL upon completion.
  */
-void *receiveAndPrintIncomingData(void *arg) {
+void *handle_single_client(void *arg) {
     pthread_detach(pthread_self());
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
