@@ -43,6 +43,7 @@
 #define WIN_MSG "tlength:45;type:OUT;length:10;data:\nyou won!\n"
 #define LOSE_MSG "tlength:48;type:OUT;length:13;data:\nyou lost ):\n"
 #define MAX_GAMES 10
+#define MAX_CLIENTS_TOTAL 2 * MAX_GAMES
 
 //data types
 struct AcceptedSocket {
@@ -69,7 +70,8 @@ struct ThreadArgs {
 //globals
 Game *games[MAX_GAMES] = {NULL};
 volatile sig_atomic_t stop_all_games = 0;
-unsigned int acceptedGames = 0;
+volatile unsigned int accepted_clients_count = 0;
+pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //prototypes
 /*
@@ -201,9 +203,9 @@ void thread_exit(int clientSocketFD, Game *game);
 bool handle_client_messages(int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
                             int *flag_okay_response);
 
-void handle_closed_games();
+void wait_for_all_threads_to_finish();
 
-void close_all_games();
+void handle_closed_games();
 
 /*
  * Starts the process of accepting incoming connections on the server socket.
@@ -216,8 +218,10 @@ void close_all_games();
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop_all_games) {
         // Lock mutex before checking client count
-        if (acceptedGames < MAX_GAMES) {
+        pthread_mutex_lock(&globals_mutex);
+        if (accepted_clients_count < MAX_CLIENTS_TOTAL) {
             // Unlock mutex before accepting new connection
+            pthread_mutex_unlock(&globals_mutex);
             struct AcceptedSocket clientSocket =
                     acceptIncomingConnection(serverSocketFD);
 
@@ -228,6 +232,7 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             }
         } else {
             // Server at capacity, reject new connection
+            pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
             // Send max clients error message
             s_send(clientSocketFD, GAME_MAX,
@@ -306,7 +311,6 @@ bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inacti
         return true;
     }
     games[inactive_game_index] = game;
-    acceptedGames++;
     return false;
 }
 
@@ -315,6 +319,11 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
     // Dynamically allocate memory for thread arguments
     struct ThreadArgs *clientThreadArgs = malloc(sizeof(struct ThreadArgs));
     if (!clientThreadArgs) {
+        if (inactive_game_index != -1) {
+            //if failed to allocate memory for args that have a new game then free game and set to NULL
+            free(games[inactive_game_index]);
+            games[inactive_game_index] = NULL;
+        }
         perror("Failed to allocate memory for ThreadArgs");
         return;
     }
@@ -332,6 +341,11 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
     }
     pthread_t clientThread;
     if (pthread_create(&clientThread, NULL, handle_single_client, clientThreadArgs) != 0) {
+        if (inactive_game_index != -1) {
+            //if failed to allocate memory for args that have a new game then free game and set to NULL
+            free(games[inactive_game_index]);
+            games[inactive_game_index] = NULL;
+        }
         perror("Failed to create thread");
         free(clientThreadArgs); // Free allocated memory on failure
     }
@@ -356,6 +370,9 @@ void add_client_to_game(const struct AcceptedSocket *clientSocketFD, const int a
  */
 void *handle_single_client(void *arg) {
     pthread_detach(pthread_self());
+    pthread_mutex_lock(&globals_mutex);
+    accepted_clients_count++;
+    pthread_mutex_unlock(&globals_mutex);
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
     free(arg);
@@ -393,7 +410,9 @@ void *handle_single_client(void *arg) {
 
 void thread_exit(const int clientSocketFD, Game *game) {
     //send disconnect message and remove accepted socket from array
-    sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
+    if (!stop_all_games) {
+        sendReceivedMessageToTheOtherClients(SECOND_CLIENT_DISCONNECTED, clientSocketFD, game);
+    }
     pthread_mutex_lock(&game->game_mutex);
     if (game->acceptedSocketsCount > 0) {
         game->acceptedSocketsCount--;
@@ -404,6 +423,10 @@ void thread_exit(const int clientSocketFD, Game *game) {
     game->stop_game = true;
     pthread_mutex_unlock(&game->game_mutex);
     close(clientSocketFD);
+    printf("\033[1;31;47mThread %lu has successfully exited.\033[0m\n", pthread_self());
+    pthread_mutex_lock(&globals_mutex);
+    accepted_clients_count--;
+    pthread_mutex_unlock(&globals_mutex);
 }
 
 bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
@@ -640,8 +663,7 @@ void handle_closed_games() {
                 pthread_mutex_destroy(&games[i]->game_mutex);
                 free(games[i]);
                 games[i] = NULL;
-                printf("\033[1;4;32;47mFreed game %d\033[0m\n", i);
-                acceptedGames--;
+                printf("\033[1;30;42mGame %d resources have been released.\033[0m\n", i);
             } else {
                 pthread_mutex_unlock(&games[i]->game_mutex);
             }
@@ -649,19 +671,19 @@ void handle_closed_games() {
     }
 }
 
-void close_all_games() {
-    for (int i = 0; i < MAX_GAMES; i++) {
-        if (games[i]) {
-            close(games[i]->stop_pipe[0]);
-            close(games[i]->stop_pipe[1]);
-            pthread_mutex_destroy(&games[i]->game_mutex);
-            free(games[i]);
-            games[i] = NULL;
-            printf("\033[1;4;32;47mFreed game %d\033[0m\n", i);
-            acceptedGames--;
+void wait_for_all_threads_to_finish() {
+    unsigned int local_count = 0;
+    while (true) {
+        pthread_mutex_lock(&globals_mutex);
+        local_count = accepted_clients_count; // Copy the value under lock
+        pthread_mutex_unlock(&globals_mutex);
+        if (local_count == 0) {
+            break; // Exit the loop when no threads are active
         }
+        usleep(1000); // Sleep for 1ms to avoid busy-waiting
     }
 }
+
 
 /*
  * creates server socket and address for it.
@@ -757,8 +779,8 @@ int main(const int argc, char *argv[]) {
     }
     // Start server main loop
     startAcceptingIncomingConnections(serverSocketFD);
-    // Cleanup resources
-    close_all_games();
+    wait_for_all_threads_to_finish(); // Cleanup resources
+    handle_closed_games();
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
     return 0;
