@@ -125,6 +125,14 @@ void wait_for_print(void);
 */
 void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests);
 
+bool handle_flag_requests(int socketFD, const char *current_data, int n);
+
+void delete_flag_file();
+
+void termination_handler(int signal);
+
+void init_signal_handle();
+
 /*
 * Synchronizes console output using thread synchronization primitives.
 * This function uses mutex locks and condition variables to ensure
@@ -134,7 +142,6 @@ void process_message_type(int socketFD, char *current_data, const char *current_
 * Parameters: None
 * Returns: None
 */
-
 
 void wait_for_print(void) {
     // Wait until allowed to print
@@ -419,7 +426,7 @@ void termination_handler(const int signal) {
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
     close(socketFD);
-    exit(EXIT_FAILURE);
+    exit(signal);
 }
 
 void init_signal_handle() {
