@@ -782,5 +782,5 @@ int main(const int argc, char *argv[]) {
     handle_closed_games();
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
-    return 0;
+    pthread_exit(NULL);
 }
