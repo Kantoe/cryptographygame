@@ -70,7 +70,7 @@ struct ThreadArgs {
 //globals
 Game *games[MAX_GAMES] = {NULL};
 volatile sig_atomic_t stop_all_games = 0;
-volatile unsigned int accepted_clients_count = 0;
+unsigned int accepted_clients_count = 0;
 pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //prototypes
@@ -683,7 +683,6 @@ void wait_for_all_threads_to_finish() {
         usleep(1000); // Sleep for 1ms to avoid busy-waiting
     }
 }
-
 
 /*
  * creates server socket and address for it.
