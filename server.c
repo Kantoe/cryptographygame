@@ -778,9 +778,10 @@ int main(const int argc, char *argv[]) {
     }
     // Start server main loop
     startAcceptingIncomingConnections(serverSocketFD);
-    wait_for_all_threads_to_finish(); // Cleanup resources
+    wait_for_all_threads_to_finish();
+    // Cleanup resources
     handle_closed_games();
     shutdown(serverSocketFD, SHUT_RDWR);
     close(serverSocketFD);
-    pthread_exit(NULL);
+    return EXIT_SUCCESS;
 }
