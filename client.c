@@ -426,7 +426,7 @@ void termination_handler(const int signal) {
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
     close(socketFD);
-    exit(signal);
+    exit(signal + 128);
 }
 
 void init_signal_handle() {
