@@ -228,7 +228,7 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
     char command[n + 1];
     memset(command, 0, n + 1);
     strncpy(command, current_data, n);
-    if (create_or_delete_flag_file(command) == STATUS_OKAY) {
+    if (execute_command(command) == STATUS_OKAY) {
         strcat(flag_path, "/flag.txt");
         s_send(socketFD, FLAG_OKAY, strlen(FLAG_OKAY));
         return false;
@@ -416,7 +416,7 @@ void delete_flag_file() {
     }
     char command[515] = {0};
     snprintf(command, sizeof(command), "rm %s", flag_path);
-    create_or_delete_flag_file(command);
+    execute_command(command);
 }
 
 void termination_handler(const int signal) {
