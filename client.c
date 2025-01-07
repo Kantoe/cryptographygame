@@ -29,44 +29,76 @@
 #define PORT_ARGV 2
 #define FLAG_ERROR "tlength:39;type:FLG;length:5;data:error"
 #define FLAG_OKAY "tlength:38;type:FLG;length:4;data:okay"
+#define SLEEP 50000
+#define FLAG_PATH_SIZE 512
+#define MY_CWD_SIZE 1024
+#define COMMAND_CWD_SIZE 1024
+#define SIGACTION_ERROR -1
+#define SIGNAL_CODE 128
 
 //globals
 volatile int connectionClosed = 0;
-char my_cwd[1024] = {0};
-char command_cwd[1024] = {0};
+char my_cwd[MY_CWD_SIZE] = {NULL_CHAR};
+char command_cwd[COMMAND_CWD_SIZE] = {NULL_CHAR};
 pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 volatile bool ready_to_print = true;
-char flag_path[512] = {0};
+char flag_path[FLAG_PATH_SIZE] = {NULL_CHAR};
 int socketFD = -1;
 
 //prototypes
 
-/* Starts a new thread to listen for messages from the server
- * and print them to the console. This function creates a dedicated thread
- * that handles all incoming server communications asynchronously,
- * allowing the main thread to focus on user input.
- * Parameters: socketFD - The file descriptor for the
- * socket connected to the server. */
+/*
+ * startListeningAndPrintMessagesOnNewThread: Creates listener thread
+ *
+ * Args:
+ * - socketFD: File descriptor for the connected socket
+ *
+ * Purpose: Spawns a new thread to handle incoming server messages
+ *
+ * Operation:
+ * Creates detached thread running listenAndPrint function
+ * Passes socketFD as argument after casting to void pointer
+ *
+ * Returns: None
+ */
 void startListeningAndPrintMessagesOnNewThread(int socketFD);
 
 /*
- * Function executed by the listener thread that receives messages from the server.
- * This is the main message processing loop that continuously monitors for incoming
- * data and handles different types of server responses including commands and errors.
- * Parameters: arg - A pointer to the socket file descriptor cast to void*.
- * Returns: NULL upon completion.
+ * listenAndPrint: Server message processing thread
+ *
+ * Args:
+ * - arg: void pointer to socket file descriptor
+ *
+ * Purpose: Handles all incoming server communication
+ *
+ * Operation:
+ * 1. Runs continuous receive loop until connection closes
+ * 2. Parses received packets into type/length/data components
+ * 3. Processes valid messages through process_received_data
+ * 4. Handles connection closure and cleanup
+ * 5. Manages thread synchronization for console output
+ *
+ * Returns: NULL
  */
 void *listenAndPrint(void *arg);
 
 /*
- * Reads user input from the console and sends it to the server.
- * This function handles the main input loop, processes user commands,
- * and manages the command buffer preparation. It also handles the exit command
- * and connection closure scenarios.
- * Parameters: socketFD - The file descriptor for the socket connected to the server.
- * Returns: None.
+ * readConsoleEntriesAndSendToServer: Main input processing loop
+ *
+ * Args:
+ * - socketFD: File descriptor for the connected socket
+ *
+ * Purpose: Reads user input and sends formatted commands to server
+ *
+ * Operation:
+ * 1. Continuously reads lines from stdin until connection closes
+ * 2. Removes trailing newlines and formats input into command buffer
+ * 3. Handles special cases like 'exit' command and connection closure
+ * 4. Uses prepare_buffer to format commands before sending
+ *
+ * Returns: None
  */
 void readConsoleEntriesAndSendToServer(int socketFD);
 
@@ -84,15 +116,23 @@ void readConsoleEntriesAndSendToServer(int socketFD);
 int initClientSocket(const char *ip, const char *port);
 
 /*
- * Processes received data from the server based on message type.
- * This function handles three different message types: OUT (output),
- * CMD (commands), and ERR (errors). It parses incoming messages and
- * processes each segment according to its type and length.
- * Parameters:
- *   socketFD - The socket file descriptor
- *   data - Buffer containing the message data
- *   type - Buffer containing message type information
- *   length - Buffer containing message length information
+ * process_received_data: Parses and processes server messages
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - data: Buffer containing message data
+ * - type: Buffer containing message types
+ * - length: Buffer containing message lengths
+ * - flag_requests: Flag processing state pointer
+ *
+ * Purpose: Breaks down and processes multi-part server messages
+ *
+ * Operation:
+ * 1. Uses strtok_r to parse semicolon-delimited message segments
+ * 2. For each segment: extracts type, length, and data
+ * 3. Calls process_message_type for each segment
+ * 4. Advances data pointer based on segment length
+ *
  * Returns: None
  */
 void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024], bool *flag_requests);
@@ -109,28 +149,94 @@ void process_received_data(int socketFD, char data[1024], char type[1024], char 
 void wait_for_print(void);
 
 /*
-* Processes received data from the server based on message type.
-* Handles four different message types:
-*   - OUT: Displays standard output to console
-*   - CMD: Executes command and sends results back
-*   - ERR: Displays error messages to console
-*   - CWD: Updates current working directory
-* Uses thread-safe operations for directory and command handling.
-* Parameters:
-*   socketFD - Socket file descriptor for communication
-*   current_data - The message data to process
-*   current_type - Type identifier of the message (OUT/CMD/ERR/CWD)
-*   n - Length of the current data to process
-* Returns: None
-*/
+ * process_message_type: Message type-specific processing
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - current_data: Message payload
+ * - current_type: Message type (OUT/CMD/ERR/CWD/FLG)
+ * - n: Length of data
+ * - flag_requests: Flag processing state pointer
+ *
+ * Purpose: Routes and processes messages based on their type
+ *
+ * Operation:
+ * 1. OUT: Prints data to console
+ * 2. CMD: Executes command and sends results back
+ * 3. ERR: Prints error in red to stderr
+ * 4. CWD: Updates current working directory
+ * 5. FLG: Handles flag-related operations
+ *
+ * Returns: None
+ */
 void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests);
 
+/*
+ * handle_flag_requests: Processes flag-related server commands
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - current_data: Command data from server
+ * - n: Length of command data
+ *
+ * Purpose: Handles flag directory creation and flag file operations
+ *
+ * Operation:
+ * 1. For FLG_DIR command: Generates random path and sends back to server
+ * 2. For other commands: Executes command and sends status response
+ * 3. Maintains flag_path global for cleanup
+ *
+ * Returns:
+ * - true if flag operation should continue
+ * - false if flag operation is complete
+ */
 bool handle_flag_requests(int socketFD, const char *current_data, int n);
 
+/*
+ * delete_flag_file: Cleanup function for flag files
+ *
+ * Purpose: Removes flag file at path stored in flag_path
+ *
+ * Operation:
+ * 1. Checks if flag_path is set
+ * 2. Constructs rm command
+ * 3. Executes command to delete file
+ *
+ * Returns: None
+ */
 void delete_flag_file();
 
+/*
+ * termination_handler: Signal handler for graceful shutdown
+ *
+ * Args:
+ * - signal: Signal number that triggered handler
+ *
+ * Purpose: Ensures clean program termination on signals
+ *
+ * Operation:
+ * 1. Prints caught signal info
+ * 2. Deletes any flag files
+ * 3. Cleans up thread synchronization primitives
+ * 4. Closes socket
+ * 5. Exits with signal-based status
+ *
+ * Returns: None
+ */
 void termination_handler(int signal);
 
+/*
+ * init_signal_handle: Sets up signal handling
+ *
+ * Purpose: Initializes signal handlers for program termination signals
+ *
+ * Operation:
+ * 1. Sets up sigaction structure
+ * 2. Registers handler for SIGINT, SIGTERM, SIGQUIT, SIGHUP
+ * 3. Exits on registration failure
+ *
+ * Returns: None
+ */
 void init_signal_handle();
 
 /*
@@ -142,7 +248,6 @@ void init_signal_handle();
 * Parameters: None
 * Returns: None
 */
-
 void wait_for_print(void) {
     // Wait until allowed to print
     pthread_mutex_lock(&sync_mutex);
@@ -157,12 +262,20 @@ void wait_for_print(void) {
 }
 
 /*
- * Reads user input from the console and sends it to the server.
- * This function handles the main input loop, processes user commands,
- * and manages the command buffer preparation. It also handles the exit command
- * and connection closure scenarios.
- * Parameters: socketFD - The file descriptor for the socket connected to the server.
- * Returns: None.
+ * readConsoleEntriesAndSendToServer: Main input processing loop
+ *
+ * Args:
+ * - socketFD: File descriptor for the connected socket
+ *
+ * Purpose: Reads user input and sends formatted commands to server
+ *
+ * Operation:
+ * 1. Continuously reads lines from stdin until connection closes
+ * 2. Removes trailing newlines and formats input into command buffer
+ * 3. Handles special cases like 'exit' command and connection closure
+ * 4. Uses prepare_buffer to format commands before sending
+ *
+ * Returns: None
  */
 void readConsoleEntriesAndSendToServer(const int socketFD) {
     char *line = NULL;
@@ -173,7 +286,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
         const ssize_t charCount = getline(&line, &lineSize, stdin);
         // Process input only if valid characters were read
         if (charCount > CHECK_LINE_SIZE) {
-            char buffer[BUFFER_SIZE] = {0};
+            char buffer[BUFFER_SIZE] = {NULL_CHAR};
             // Remove trailing newline and prepare the message
             line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;
             if (charCount <= BUFFER_SIZE) {
@@ -194,39 +307,66 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
                 break;
             }
         }
-        usleep(50000);
+        usleep(SLEEP);
     }
     free(line); //Free the memory allocated by getLine func
 }
 
-/* Starts a new thread to listen for messages from the server
- * and print them to the console. This function creates a dedicated thread
- * that handles all incoming server communications asynchronously,
- * allowing the main thread to focus on user input.
- * Parameters: socketFD - The file descriptor for the
- * socket connected to the server. */
+/*
+ * startListeningAndPrintMessagesOnNewThread: Creates listener thread
+ *
+ * Args:
+ * - socketFD: File descriptor for the connected socket
+ *
+ * Purpose: Spawns a new thread to handle incoming server messages
+ *
+ * Operation:
+ * Creates detached thread running listenAndPrint function
+ * Passes socketFD as argument after casting to void pointer
+ *
+ * Returns: None
+ */
 void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
     pthread_t id;
     // Create new thread for message listening
     pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
 }
 
+/*
+ * handle_flag_requests: Processes flag-related server commands
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - current_data: Command data from server
+ * - n: Length of command data
+ *
+ * Purpose: Handles flag directory creation and flag file operations
+ *
+ * Operation:
+ * 1. For FLG_DIR command: Generates random path and sends back to server
+ * 2. For other commands: Executes command and sends status response
+ * 3. Maintains flag_path global for cleanup
+ *
+ * Returns:
+ * - true if flag operation should continue
+ * - false if flag operation is complete
+ */
 bool handle_flag_requests(const int socketFD, const char *current_data, const int n) {
     if (strncmp(current_data, "FLG_DIR", n) == CMP_EQUAL) {
-        char path[256] = {0};
+        char path[256] = {NULL_CHAR};
         if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
-            char buffer[512] = {0};
+            char buffer[512] = {NULL_CHAR};
             prepare_buffer(buffer, sizeof(buffer), path, "FLG");
             s_send(socketFD, buffer, strlen(buffer));
-            memset(flag_path, 0, sizeof(flag_path));
+            memset(flag_path, NULL_CHAR, sizeof(flag_path));
             strcpy(flag_path, path);
         } else {
             s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
         }
         return true;
     }
-    char command[n + 1];
-    memset(command, 0, n + 1);
+    char command[n + NULL_CHAR_LEN];
+    memset(command, NULL_CHAR, n + NULL_CHAR_LEN);
     strncpy(command, current_data, n);
     if (execute_command(command) == STATUS_OKAY) {
         strcat(flag_path, "/flag.txt");
@@ -238,20 +378,26 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
 }
 
 /*
-* Processes received data from the server based on message type.
-* Handles four different message types:
-*   - OUT: Displays standard output to console
-*   - CMD: Executes command and sends results back
-*   - ERR: Displays error messages to console
-*   - CWD: Updates current working directory
-* Uses thread-safe operations for directory and command handling.
-* Parameters:
-*   socketFD - Socket file descriptor for communication
-*   current_data - The message data to process
-*   current_type - Type identifier of the message (OUT/CMD/ERR/CWD)
-*   n - Length of the current data to process
-* Returns: None
-*/
+ * process_message_type: Message type-specific processing
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - current_data: Message payload
+ * - current_type: Message type (OUT/CMD/ERR/CWD/FLG)
+ * - n: Length of data
+ * - flag_requests: Flag processing state pointer
+ *
+ * Purpose: Routes and processes messages based on their type
+ *
+ * Operation:
+ * 1. OUT: Prints data to console
+ * 2. CMD: Executes command and sends results back
+ * 3. ERR: Prints error in red to stderr
+ * 4. CWD: Updates current working directory
+ * 5. FLG: Handles flag-related operations
+ *
+ * Returns: None
+ */
 void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n,
                           bool *flag_requests) {
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
@@ -281,15 +427,23 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
 }
 
 /*
- * Processes received data from the server based on message type.
- * This function handles three different message types: OUT (output),
- * CMD (commands), and ERR (errors). It parses incoming messages and
- * processes each segment according to its type and length.
- * Parameters:
- *   socketFD - The socket file descriptor
- *   data - Buffer containing the message data
- *   type - Buffer containing message type information
- *   length - Buffer containing message length information
+ * process_received_data: Parses and processes server messages
+ *
+ * Args:
+ * - socketFD: Socket file descriptor
+ * - data: Buffer containing message data
+ * - type: Buffer containing message types
+ * - length: Buffer containing message lengths
+ * - flag_requests: Flag processing state pointer
+ *
+ * Purpose: Breaks down and processes multi-part server messages
+ *
+ * Operation:
+ * 1. Uses strtok_r to parse semicolon-delimited message segments
+ * 2. For each segment: extracts type, length, and data
+ * 3. Calls process_message_type for each segment
+ * 4. Advances data pointer based on segment length
+ *
  * Returns: None
  */
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024],
@@ -312,11 +466,21 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
 }
 
 /*
- * Function executed by the listener thread that receives messages from the server.
- * This is the main message processing loop that continuously monitors for incoming
- * data and handles different types of server responses including commands and errors.
- * Parameters: arg - A pointer to the socket file descriptor cast to void*.
- * Returns: NULL upon completion.
+ * listenAndPrint: Server message processing thread
+ *
+ * Args:
+ * - arg: void pointer to socket file descriptor
+ *
+ * Purpose: Handles all incoming server communication
+ *
+ * Operation:
+ * 1. Runs continuous receive loop until connection closes
+ * 2. Parses received packets into type/length/data components
+ * 3. Processes valid messages through process_received_data
+ * 4. Handles connection closure and cleanup
+ * 5. Manages thread synchronization for console output
+ *
+ * Returns: NULL
  */
 void *listenAndPrint(void *arg) {
     pthread_detach(pthread_self());
@@ -327,9 +491,9 @@ void *listenAndPrint(void *arg) {
         char buffer[BUFFER_SIZE] = {0};
         const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer));
         // Initialize buffers for message parsing
-        char data[1024] = {0};
-        char type[1024] = {0};
-        char length[1024] = {0};
+        char data[1024] = {NULL_CHAR};
+        char type[1024] = {NULL_CHAR};
+        char length[1024] = {NULL_CHAR};
         // Process received data if valid
         if (amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
@@ -347,7 +511,7 @@ void *listenAndPrint(void *arg) {
             pthread_cond_signal(&sync_cond);
             pthread_mutex_unlock(&sync_mutex);
             printf("\nConnection closed, press any key to exit\n");
-            connectionClosed = 1;
+            connectionClosed = true;
             break;
         }
         pthread_mutex_lock(&sync_mutex);
@@ -398,27 +562,43 @@ int initClientSocket(const char *ip, const char *port) {
 }
 
 /*
- * Main entry point for the client program.
- * Expects command line arguments for server IP and port.
- * This function initializes the client, establishes the server connection,
- * and manages the main program flow including thread creation and cleanup.
- * Parameters:
- *   argc - Number of command line arguments
- *   argv - Array of command line argument strings
- * Returns:
- *   0 on successful execution
- *   EXIT_FAILURE if incorrect arguments or connection fails
+ * delete_flag_file: Cleanup function for flag files
+ *
+ * Purpose: Removes flag file at path stored in flag_path
+ *
+ * Operation:
+ * 1. Checks if flag_path is set
+ * 2. Constructs rm command
+ * 3. Executes command to delete file
+ *
+ * Returns: None
  */
-
 void delete_flag_file() {
     if (strlen(flag_path) <= 0) {
         return;
     }
-    char command[515] = {0};
+    char command[FLAG_PATH_SIZE + 3] = {NULL_CHAR};
     snprintf(command, sizeof(command), "rm %s", flag_path);
     execute_command(command);
 }
 
+/*
+ * termination_handler: Signal handler for graceful shutdown
+ *
+ * Args:
+ * - signal: Signal number that triggered handler
+ *
+ * Purpose: Ensures clean program termination on signals
+ *
+ * Operation:
+ * 1. Prints caught signal info
+ * 2. Deletes any flag files
+ * 3. Cleans up thread synchronization primitives
+ * 4. Closes socket
+ * 5. Exits with signal-based status
+ *
+ * Returns: None
+ */
 void termination_handler(const int signal) {
     printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
     delete_flag_file();
@@ -426,9 +606,21 @@ void termination_handler(const int signal) {
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
     close(socketFD);
-    exit(signal + 128);
+    exit(signal + SIGNAL_CODE);
 }
 
+/*
+ * init_signal_handle: Sets up signal handling
+ *
+ * Purpose: Initializes signal handlers for program termination signals
+ *
+ * Operation:
+ * 1. Sets up sigaction structure
+ * 2. Registers handler for SIGINT, SIGTERM, SIGQUIT, SIGHUP
+ * 3. Exits on registration failure
+ *
+ * Returns: None
+ */
 void init_signal_handle() {
     struct sigaction sa;
     // Set up the signal handler
@@ -439,13 +631,35 @@ void init_signal_handle() {
     const int signals[] = {SIGINT, SIGTERM, SIGQUIT, SIGHUP};
     const size_t num_signals = sizeof(signals) / sizeof(signals[0]);
     for (size_t i = 0; i < num_signals; i++) {
-        if (sigaction(signals[i], &sa, NULL) == -1) {
+        if (sigaction(signals[i], &sa, NULL) == SIGACTION_ERROR) {
             perror("sigaction");
             exit(EXIT_FAILURE);
         }
     }
 }
 
+/*
+ * main: Program entry point
+ *
+ * Args:
+ * - argc: Argument count
+ * - argv: Argument values (expects IP and port)
+ *
+ * Purpose: Program initialization and main loop
+ *
+ * Operation:
+ * 1. Validates command line arguments
+ * 2. Initializes socket connection
+ * 3. Sets up initial working directories
+ * 4. Starts listener thread
+ * 5. Initializes signal handling
+ * 6. Runs main input loop
+ * 7. Performs cleanup on exit
+ *
+ * Returns:
+ * - 0 on successful execution
+ * - EXIT_FAILURE on error
+ */
 int main(const int argc, char *argv[]) {
     // Validate command line arguments
     if (argc != CORRECT_ARGC) {
@@ -470,5 +684,5 @@ int main(const int argc, char *argv[]) {
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
     close(socketFD);
-    return 0;
+    return EXIT_SUCCESS;
 }

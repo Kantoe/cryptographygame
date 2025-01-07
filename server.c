@@ -25,18 +25,14 @@
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
 #define MAX_CLIENTS 2
-#define SEND_FLAG 0
 #define SLEEP 100000
-#define PTHREAD_CREATE 1
 #define BUFFER_SIZE 4096
 #define RECEIVE_FLAG 0
 #define CHECK_RECEIVE 0
 #define NULL_CHAR 0
 #define ACCEPTED_SUCCESSFULLY 0
-#define CLIENT_THREAD_EXISTS 0
-#define CLIENT_SOCKET_EXISTS 0
 #define LISTEN 1
-#define CMD_TYPE_LENGTH 3
+#define TYPE_LENGTH 3
 #define TYPE_OFFSET 5
 #define DATA_CMD_CHECK "CMD"
 #define DATA_OFFSET 5
@@ -44,6 +40,22 @@
 #define LOSE_MSG "tlength:48;type:OUT;length:13;data:\nyou lost ):\n"
 #define MAX_GAMES 10
 #define MAX_CLIENTS_TOTAL 2 * MAX_GAMES
+#define GAME_NOT_FOUND -1
+#define FIRST_CLIENT_INDEX 0
+#define SECOND_CLIENT_INDEX 1
+#define PTHREAD_CREATE_SUCCESS 0
+#define PIPE_READ 0
+#define PIPE_WRITE 1
+#define TIMEOUT_SECONDS 1
+#define TIMEOUT_USECONDS 0
+#define SELECT_ERROR_CHECK 0
+#define MAX_FD_FOR_SELECT 1
+#define PIPE_READ_BUF_SIZE 1
+#define FLAG_DATA_SIZE 32
+#define RANDOM_KEY_SIZE 9
+#define FLAG_COMMAND_SIZE 1024
+#define FLAG_COMMAND_BUFFER_SIZE 2048
+#define MAX_FLAG_FILE_TRIES 5
 
 //data types
 struct AcceptedSocket {
@@ -51,7 +63,7 @@ struct AcceptedSocket {
     struct sockaddr_in address;
     int error;
     int acceptedSuccessfully;
-    char flag_data[32];
+    char flag_data[FLAG_DATA_SIZE];
 };
 
 typedef struct {
@@ -74,146 +86,317 @@ unsigned int accepted_clients_count = 0;
 pthread_mutex_t globals_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //prototypes
-/*
- * Handles signals, specifically SIGINT (press ctrl+c)
- * (interrupt signal) to safely terminate the server.
- * This function ensures proper cleanup of resources when
- * the server is interrupted, preventing memory leaks and
- * hanging connections.
- * Parameters: signal - The signal number received (e.g., SIGINT).
+/**
+ * Signal handler for graceful server shutdown
+ * Args:
+ *   signal: The signal number received (typically SIGINT)
+ * Operation:
+ *   Sets global stop flag and prints signal info
+ * Returns: void
  */
 void handle_signal(int signal);
 
-/*
- * Accepts an incoming connection on the server socket.
- * This function handles the initial connection setup for new clients,
- * creating the necessary socket structures and performing error checking.
- * It is called for each new client attempting to connect.
- * Parameters: serverSocketFD - The file descriptor for the server socket.
- * Returns: An AcceptedSocket structure containing the
- * client socket file descriptor, address,
- * success flag, and error code (if any).
+/**
+ * Accepts new client connections on server socket
+ * Args:
+ *   serverSocketFD: File descriptor for the server socket
+ * Operation:
+ *   Accepts connection and populates client address info
+ * Returns:
+ *   AcceptedSocket struct with client details and status
  */
 struct AcceptedSocket acceptIncomingConnection(int serverSocketFD);
 
-/*
- * Function executed by each client thread to receive data
- * from the connected client and print it to the console.
- * This is the main message processing loop for each connected client,
- * handling incoming messages and routing them to other clients.
- * It runs until the client disconnects or the server stops.
- * Parameters: arg - A pointer to the client socket
- * file descriptor cast to void*.
- * Returns: NULL upon completion.
+/**
+ * Main client message handling thread function
+ * Args:
+ *   arg: Pointer to ThreadArgs containing socket FD and game info
+ * Operation:
+ *   - Handles client messaging in a loop
+ *   - Processes commands and flags
+ *   - Routes messages between clients
+ * Returns: NULL on completion
  */
 void *handle_single_client(void *arg);
 
-/*
- * Starts the process of accepting incoming connections on the server socket.
- * This is the main server loop that manages client connections, enforces
- * the maximum client limit, and initializes client handling threads.
- * It continues running until the server is stopped via signal.
- * Parameters: serverSocketFD - The file descriptor for the server socket.
- * Returns: None.
+/**
+ * Main server accept loop for incoming connections
+ * Args:
+ *   serverSocketFD: File descriptor for the server socket
+ * Operation:
+ *   - Accepts new clients up to MAX_CLIENTS_TOTAL
+ *   - Creates handler thread for each client
+ *   - Manages game instances
+ * Returns: void
  */
 void startAcceptingIncomingConnections(int serverSocketFD);
 
-/*
- * Creates a new thread to receive and print data from the connected client.
- * This function initializes the thread handling for each new client connection,
- * setting up the necessary structures for message processing.
- * Parameters: clientSocketFD - A pointer to an AcceptedSocket structure
- * containing the client socket file descriptor.
- * Returns: None.
+/**
+ * Creates and starts a new client handler thread
+ * Args:
+ *   clientSocketFD: Pointer to AcceptedSocket for the client
+ * Operation:
+ *   - Finds/creates game instance for client
+ *   - Initializes thread arguments
+ *   - Spawns handler thread
+ * Returns: void
  */
 void handle_single_client_on_separate_thread(
     const struct AcceptedSocket *clientSocketFD);
 
-/*
- * Sends received messages from one client to all other connected clients.
- * This function handles message broadcasting, ensuring that messages
- * are properly routed to all connected clients except the sender.
- * It maintains thread safety when accessing shared resources.
- * Parameters: buffer - The message to be sent.
- * socketFD - The file descriptor of the sender
- * (to exclude it from receiving its own message).
- * Returns: None.
+
+/**
+ * Routes messages between connected clients in a game
+ * Args:
+ *   buffer: Message to send
+ *   socketFD: Sender's socket FD (excluded from receiving)
+ *   game: Pointer to Game struct for message routing
+ * Operation:
+ *   Thread-safe message broadcasting to other game clients
+ * Returns: void
  */
 void sendReceivedMessageToTheOtherClients(const char *buffer, int socketFD, Game *game);
 
-/*
- * Initializes the server socket, binds it to the specified port,
- * and prepares it to listen for incoming connections.
- * This function handles all server setup including address binding,
- * socket creation, and listen queue initialization.
- * Parameters: port - The port number on which the
- * server will listen for incoming connections.
- * Returns: A valid server socket file descriptor if successful;
- * EXIT_FAILURE if there is an error.
+/**
+ * Initializes the server socket with specified configuration
+ * Args:
+ *   port: Port number to bind server to
+ * Operation:
+ *   - Creates TCP/IPv4 socket
+ *   - Binds to address/port
+ *   - Sets non-blocking mode
+ *   - Starts listening
+ * Returns:
+ *   Valid server socket FD or EXIT_FAILURE
  */
 int initServerSocket(int port);
 
-/*
- * checks if data in buffer is type of CMD.
- * if it's CMD type checks for validity based upon banned words and allowed words.
- * if the message is not type CMD or valid CMD type.
- * received message is sent to other client.
- * Returns: None.
+/**
+ * Validates incoming client messages
+ * Args:
+ *   buffer: Message buffer to check
+ * Operation:
+ *   - Checks message type and format
+ *   - Validates command data if CMD type
+ * Returns:
+ *   Boolean indicating message validity
  */
-
 int check_message_received(char buffer[4096]);
 
-/*
- * creates server socket and address for it.
- * returns 1 for failure 0 for success.
+/**
+ * Socket creation and address binding wrapper
+ * Args:
+ *   port: Port to bind to
+ *   serverSocketFD: Pointer to store socket FD
+ *   server_address: Pointer to store address info
+ * Operation:
+ *   Creates socket and prepares address structure
+ * Returns:
+ *   EXIT_SUCCESS or EXIT_FAILURE
  */
-
 int config_socket(int port, int *serverSocketFD, struct sockaddr_in *server_address);
 
-/*
- * binds server socket to an address
- * listens on that server socket
+/**
+ * Binds socket and starts listening
+ * Args:
+ *   serverSocketFD: Server socket file descriptor
+ *   server_address: Server address structure
+ * Operation:
+ *   Binds socket and initiates listening state
+ * Returns:
+ *   EXIT_SUCCESS or EXIT_FAILURE
  */
 int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_address);
 
+/**
+ * Processes and routes client messages
+ * Args:
+ *   clientSocketFD: Client's socket FD
+ *   buffer: Message buffer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Handles game state messages
+ *   - Checks win conditions
+ *   - Routes valid messages
+ * Returns: Boolean indicating if game should end
+ */
 int generate_message_for_clients(int clientSocketFD, char buffer[4096], Game *game);
 
+/**
+ * Validates message field format
+ * Args:
+ *   buffer: Message to validate
+ * Operation:
+ *   Checks presence and format of required fields
+ * Returns:
+ *   Boolean indicating valid format
+ */
 int check_message_fields(const char *buffer);
 
+/**
+ * Creates encrypted flag file for client
+ * Args:
+ *   buffer: Directory path
+ *   clientSocketFD: Client's socket FD
+ *   game: Game instance pointer
+ * Operation:
+ *   - Generates random flag data
+ *   - Creates and encrypts flag file
+ * Returns: Status code
+ */
 int generate_client_flag(const char *buffer, int clientSocketFD, Game *game);
 
+/**
+ * Checks game winning condition
+ * Args:
+ *   clientSocketFD: Client's socket FD
+ *   buffer: Message buffer
+ *   game: Game instance pointer
+ * Operation:
+ *   Compares client flag data for win
+ * Returns:
+ *   Boolean indicating win
+ */
 bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
 
+/**
+ * Processes client flag operations
+ * Args:
+ *   buffer: Message buffer
+ *   flag_file_tries: Pointer to attempts counter
+ *   clientSocketFD: Client socket FD
+ *   flag_okay_response: Flag status pointer
+ *   flag_request_dir: Directory request status pointer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Validates flag operations
+ *   - Handles flag file creation
+ *   - Tracks attempts
+ * Returns: Operation status
+ */
 int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocketFD, int *flag_okay_response,
                        int *flag_request_dir, Game *game);
 
+/**
+ * Finds active game with space for client
+ * Operation:
+ *   Searches game array for active instance
+ * Returns:
+ *   Game index or -1 if none found
+ */
 int find_active_game();
 
+/**
+ * Finds slot for new game instance
+ * Operation:
+ *   Searches for NULL entry in games array
+ * Returns:
+ *   Available index or -1 if full
+ */
 int find_inactive_game();
 
+/**
+ * Adds a new client to an existing game instance
+ * Args:
+ *   clientSocketFD: Pointer to client's socket info
+ *   active_game_index: Index of active game to join
+ * Operation:
+ *   - Thread-safe update of game client count
+ *   - Stores client socket info in game structure
+ * Returns: void
+ */
 void add_client_to_game(const struct AcceptedSocket *clientSocketFD, int active_game_index);
 
+/**
+ * Initializes new game instance
+ * Args:
+ *   clientSocketFD: First client's socket info
+ *   inactive_game_index: Array index for new game
+ * Operation:
+ *   - Allocates game structure
+ *   - Initializes mutex and pipe
+ *   - Sets initial state
+ * Returns:
+ *   Boolean indicating success
+ */
 bool init_new_game(const struct AcceptedSocket *clientSocketFD, int inactive_game_index);
 
+/**
+ * Creates thread for client handling
+ * Args:
+ *   clientSocketFD: Client socket info
+ *   active_game_index: Index of active game or -1
+ *   inactive_game_index: Index for new game or -1
+ * Operation:
+ *   - Allocates thread arguments
+ *   - Creates handler thread
+ *   - Handles allocation failures
+ * Returns: void
+ */
 void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, int active_game_index,
                                    int inactive_game_index);
 
+/**
+ * Handles client thread termination and cleanup
+ * Args:
+ *   clientSocketFD: Client's socket file descriptor
+ *   game: Pointer to associated game instance
+ * Operation:
+ *   - Notifies other clients of disconnection
+ *   - Updates game client count
+ *   - Signals game termination via pipe
+ *   - Closes socket and updates global client count
+ * Returns: void
+ */
 void thread_exit(int clientSocketFD, Game *game);
 
+/**
+ * Processes incoming client messages and manages game state
+ * Args:
+ *   clientSocketFD: Client's socket file descriptor
+ *   game: Pointer to associated game instance
+ *   flag_file_tries: Pointer to flag attempt counter
+ *   flag_request_dir: Pointer to directory request status
+ *   flag_okay_response: Pointer to flag response status
+ * Operation:
+ *   - Receives client messages
+ *   - Handles flag operations and validation
+ *   - Processes game messages
+ * Returns:
+ *   Boolean indicating if client handling should terminate
+ */
 bool handle_client_messages(int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
                             int *flag_okay_response);
 
+/**
+ * Waits for all client threads to complete before server shutdown
+ * Operation:
+ *   - Monitors global client count
+ *   - Uses short sleep intervals to prevent busy waiting
+ *   - Thread-safe access to shared counter
+ * Returns: void
+ */
 void wait_for_all_threads_to_finish();
 
+/**
+ * Cleans up resources for terminated games
+ * Operation:
+ *   - Checks each game slot for stopped games
+ *   - Closes pipes and frees memory for finished games
+ *   - Thread-safe cleanup using game mutex
+ * Returns: void
+ */
 void handle_closed_games();
 
-/*
- * Starts the process of accepting incoming connections on the server socket.
- * This is the main server loop that manages client connections, enforces
- * the maximum client limit, and initializes client handling threads.
- * It continues running until the server is stopped via signal.
- * Parameters: serverSocketFD - The file descriptor for the server socket.
- * Returns: None.
+/**
+ * Main server accept loop for incoming connections
+ * Args:
+ *   serverSocketFD: File descriptor for the server socket
+ * Operation:
+ *   - Accepts new clients up to MAX_CLIENTS_TOTAL
+ *   - Creates handler thread for each client
+ *   - Manages game instances
+ * Returns: void
  */
 void startAcceptingIncomingConnections(const int serverSocketFD) {
     while (!stop_all_games) {
@@ -245,23 +428,25 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
     }
 }
 
-/*
- * Creates a new thread to receive and print data from the connected client.
- * This function initializes the thread handling for each new client connection,
- * setting up the necessary structures for message processing.
- * Parameters: clientSocketFD - A pointer to an AcceptedSocket structure
- * containing the client socket file descriptor.
- * Returns: None.
+/**
+ * Creates and starts a new client handler thread
+ * Args:
+ *   clientSocketFD: Pointer to AcceptedSocket for the client
+ * Operation:
+ *   - Finds/creates game instance for client
+ *   - Initializes thread arguments
+ *   - Spawns handler thread
+ * Returns: void
  */
 void handle_single_client_on_separate_thread(
     const struct AcceptedSocket *clientSocketFD) {
     const int active_game_index = find_active_game();
     int inactive_game_index = 0;
-    if (active_game_index != -1) {
+    if (active_game_index != GAME_NOT_FOUND) {
         add_client_to_game(clientSocketFD, active_game_index);
     } else {
         inactive_game_index = find_inactive_game();
-        if (inactive_game_index != -1) {
+        if (inactive_game_index != GAME_NOT_FOUND) {
             if (init_new_game(clientSocketFD, inactive_game_index)) {
                 return;
             }
@@ -270,6 +455,13 @@ void handle_single_client_on_separate_thread(
     create_thread_args_and_thread(clientSocketFD, active_game_index, inactive_game_index);
 }
 
+/**
+ * Finds active game with space for client
+ * Operation:
+ *   Searches game array for active instance
+ * Returns:
+ *   Game index or -1 if none found
+ */
 int find_active_game() {
     for (int i = 0; i < MAX_GAMES; i++) {
         if (games[i]) {
@@ -281,18 +473,37 @@ int find_active_game() {
             pthread_mutex_unlock(&games[i]->game_mutex);
         }
     }
-    return -1;
+    return GAME_NOT_FOUND;
 }
 
+/**
+ * Finds slot for new game instance
+ * Operation:
+ *   Searches for NULL entry in games array
+ * Returns:
+ *   Available index or -1 if full
+ */
 int find_inactive_game() {
     for (int i = 0; i < MAX_GAMES; i++) {
         if (!games[i]) {
             return i;
         }
     }
-    return -1;
+    return GAME_NOT_FOUND;
 }
 
+/**
+ * Initializes new game instance
+ * Args:
+ *   clientSocketFD: First client's socket info
+ *   inactive_game_index: Array index for new game
+ * Operation:
+ *   - Allocates game structure
+ *   - Initializes mutex and pipe
+ *   - Sets initial state
+ * Returns:
+ *   Boolean indicating success
+ */
 bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inactive_game_index) {
     //create new game with malloc
     Game *game = malloc(sizeof(Game));
@@ -300,12 +511,12 @@ bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inacti
         perror("malloc");
         return true;
     }
-    game->acceptedSocketsCount = 1;
-    game->game_clients[0] = *clientSocketFD;
+    game->acceptedSocketsCount++;
+    game->game_clients[FIRST_CLIENT_INDEX] = *clientSocketFD;
     pthread_mutex_init(&game->game_mutex, NULL);
     game->stop_game = false;
     // Initialize the stop_pipe
-    if (pipe(game->stop_pipe) == -1) {
+    if (pipe(game->stop_pipe) != PIPE_SUCCESS) {
         perror("Failed to create pipe for Game");
         free(game);
         return true;
@@ -314,12 +525,24 @@ bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inacti
     return false;
 }
 
+/**
+ * Creates thread for client handling
+ * Args:
+ *   clientSocketFD: Client socket info
+ *   active_game_index: Index of active game or -1
+ *   inactive_game_index: Index for new game or -1
+ * Operation:
+ *   - Allocates thread arguments
+ *   - Creates handler thread
+ *   - Handles allocation failures
+ * Returns: void
+ */
 void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, const int active_game_index,
                                    const int inactive_game_index) {
     // Dynamically allocate memory for thread arguments
     struct ThreadArgs *clientThreadArgs = malloc(sizeof(struct ThreadArgs));
     if (!clientThreadArgs) {
-        if (inactive_game_index != -1) {
+        if (inactive_game_index != GAME_NOT_FOUND) {
             //if failed to allocate memory for args that have a new game then free game and set to NULL
             free(games[inactive_game_index]);
             games[inactive_game_index] = NULL;
@@ -329,9 +552,9 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
     }
     // Create new thread and pass socket FD as argument
     clientThreadArgs->socketFD = clientSocketFD->acceptedSocketFD;
-    clientThreadArgs->game = active_game_index != -1
+    clientThreadArgs->game = active_game_index != GAME_NOT_FOUND
                                  ? games[active_game_index]
-                                 : inactive_game_index != -1
+                                 : inactive_game_index != GAME_NOT_FOUND
                                        ? games[inactive_game_index]
                                        : NULL;
     if (clientThreadArgs->game == NULL) {
@@ -340,8 +563,8 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
         return;
     }
     pthread_t clientThread;
-    if (pthread_create(&clientThread, NULL, handle_single_client, clientThreadArgs) != 0) {
-        if (inactive_game_index != -1) {
+    if (pthread_create(&clientThread, NULL, handle_single_client, clientThreadArgs) != PTHREAD_CREATE_SUCCESS) {
+        if (inactive_game_index != GAME_NOT_FOUND) {
             //if failed to allocate memory for args that have a new game then free game and set to NULL
             free(games[inactive_game_index]);
             games[inactive_game_index] = NULL;
@@ -351,22 +574,32 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
     }
 }
 
+/**
+ * Adds a new client to an existing game instance
+ * Args:
+ *   clientSocketFD: Pointer to client's socket info
+ *   active_game_index: Index of active game to join
+ * Operation:
+ *   - Thread-safe update of game client count
+ *   - Stores client socket info in game structure
+ * Returns: void
+ */
 void add_client_to_game(const struct AcceptedSocket *clientSocketFD, const int active_game_index) {
     pthread_mutex_lock(&games[active_game_index]->game_mutex);
-    games[active_game_index]->acceptedSocketsCount = 2;
-    games[active_game_index]->game_clients[1] = *clientSocketFD;
+    games[active_game_index]->acceptedSocketsCount++;
+    games[active_game_index]->game_clients[SECOND_CLIENT_INDEX] = *clientSocketFD;
     pthread_mutex_unlock(&games[active_game_index]->game_mutex);
 }
 
-/*
- * Function executed by each client thread to receive data
- * from the connected client and print it to the console.
- * This is the main message processing loop for each connected client,
- * handling incoming messages and routing them to other clients.
- * It runs until the client disconnects or the server stops.
- * Parameters: arg - A pointer to the client socket
- * file descriptor cast to void*.
- * Returns: NULL upon completion.
+/**
+ * Main client message handling thread function
+ * Args:
+ *   arg: Pointer to ThreadArgs containing socket FD and game info
+ * Operation:
+ *   - Handles client messaging in a loop
+ *   - Processes commands and flags
+ *   - Routes messages between clients
+ * Returns: NULL on completion
  */
 void *handle_single_client(void *arg) {
     pthread_detach(pthread_self());
@@ -379,24 +612,24 @@ void *handle_single_client(void *arg) {
     int flag_file_tries = 0;
     int flag_request_dir = 0;
     int flag_okay_response = 0;
-    const int max_fd = clientSocketFD > game->stop_pipe[0] ? clientSocketFD : game->stop_pipe[0];
+    const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop_all_games && !game->stop_game) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(clientSocketFD, &readfds);
-        FD_SET(game->stop_pipe[0], &readfds);
+        FD_SET(game->stop_pipe[PIPE_READ], &readfds);
         // Use select with a timeout
-        struct timeval timeout = {1, 0}; // 1-second timeout
-        const int ret = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
-        if (ret < 0) {
+        struct timeval timeout = {TIMEOUT_SECONDS, TIMEOUT_USECONDS}; // 1-second timeout
+        const int ret = select(max_fd + MAX_FD_FOR_SELECT, &readfds, NULL, NULL, &timeout);
+        if (ret < SELECT_ERROR_CHECK) {
             perror("select");
             break;
         }
         // Check if the pipe was written to
-        if (FD_ISSET(game->stop_pipe[0], &readfds)) {
-            char buf[1];
-            read(game->stop_pipe[0], buf, sizeof(buf)); // Clear the pipe
+        if (FD_ISSET(game->stop_pipe[PIPE_READ], &readfds)) {
+            char buf[PIPE_READ_BUF_SIZE];
+            read(game->stop_pipe[PIPE_READ], buf, sizeof(buf)); // Clear the pipe
             break;
         }
         if (FD_ISSET(clientSocketFD, &readfds)) {
@@ -408,6 +641,18 @@ void *handle_single_client(void *arg) {
     return NULL;
 }
 
+/**
+ * Handles client thread termination and cleanup
+ * Args:
+ *   clientSocketFD: Client's socket file descriptor
+ *   game: Pointer to associated game instance
+ * Operation:
+ *   - Notifies other clients of disconnection
+ *   - Updates game client count
+ *   - Signals game termination via pipe
+ *   - Closes socket and updates global client count
+ * Returns: void
+ */
 void thread_exit(const int clientSocketFD, Game *game) {
     //send disconnect message and remove accepted socket from array
     if (!stop_all_games) {
@@ -419,7 +664,7 @@ void thread_exit(const int clientSocketFD, Game *game) {
     }
     // Write to the pipe to signal that the game should stop
     const char signal = 'N';
-    write(game->stop_pipe[1], &signal, sizeof(signal)); // Writing to stop the game
+    write(game->stop_pipe[PIPE_WRITE], &signal, sizeof(signal)); // Writing to stop the game
     game->stop_game = true;
     pthread_mutex_unlock(&game->game_mutex);
     close(clientSocketFD);
@@ -429,10 +674,25 @@ void thread_exit(const int clientSocketFD, Game *game) {
     pthread_mutex_unlock(&globals_mutex);
 }
 
+/**
+ * Processes incoming client messages and manages game state
+ * Args:
+ *   clientSocketFD: Client's socket file descriptor
+ *   game: Pointer to associated game instance
+ *   flag_file_tries: Pointer to flag attempt counter
+ *   flag_request_dir: Pointer to directory request status
+ *   flag_okay_response: Pointer to flag response status
+ * Operation:
+ *   - Receives client messages
+ *   - Handles flag operations and validation
+ *   - Processes game messages
+ * Returns:
+ *   Boolean indicating if client handling should terminate
+ */
 bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
                             int *flag_okay_response) {
     // Initialize buffer for incoming message
-    char buffer[BUFFER_SIZE] = {0};
+    char buffer[BUFFER_SIZE] = {NULL_CHAR};
     // Receive data from client
     const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
     if (amountReceived > CHECK_RECEIVE) {
@@ -457,15 +717,15 @@ bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file
     return false;
 }
 
-/*
- * Sends received messages from one client to all other connected clients.
- * This function handles message broadcasting, ensuring that messages
- * are properly routed to all connected clients except the sender.
- * It maintains thread safety when accessing shared resources.
- * Parameters: buffer - The message to be sent.
- * socketFD - The file descriptor of the sender
- * (to exclude it from receiving its own message).
- * Returns: None.
+/**
+ * Routes messages between connected clients in a game
+ * Args:
+ *   buffer: Message to send
+ *   socketFD: Sender's socket FD (excluded from receiving)
+ *   game: Pointer to Game struct for message routing
+ * Operation:
+ *   Thread-safe message broadcasting to other game clients
+ * Returns: void
  */
 void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD, Game *game) {
     // Lock mutex before accessing shared client data
@@ -484,19 +744,18 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD
     pthread_mutex_unlock(&game->game_mutex);
 }
 
-/*
- * Accepts an incoming connection on the server socket.
- * This function handles the initial connection setup for new clients,
- * creating the necessary socket structures and performing error checking.
- * It is called for each new client attempting to connect.
- * Parameters: serverSocketFD - The file descriptor for the server socket.
- * Returns: An AcceptedSocket structure containing the
- * client socket file descriptor, address,
- * success flag, and error code (if any).
+/**
+ * Accepts new client connections on server socket
+ * Args:
+ *   serverSocketFD: File descriptor for the server socket
+ * Operation:
+ *   Accepts connection and populates client address info
+ * Returns:
+ *   AcceptedSocket struct with client details and status
  */
 struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     // Initialize socket structure
-    struct AcceptedSocket acceptedSocket = {0};
+    struct AcceptedSocket acceptedSocket = {NULL_CHAR};
     struct sockaddr_in clientAddress;
     int clientAddressSize = sizeof(struct sockaddr_in);
 
@@ -514,11 +773,20 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     return acceptedSocket;
 }
 
+/**
+ * Validates message field format
+ * Args:
+ *   buffer: Message to validate
+ * Operation:
+ *   Checks presence and format of required fields
+ * Returns:
+ *   Boolean indicating valid format
+ */
 int check_message_fields(const char *buffer) {
     if (strstr(buffer, "type:") == NULL) {
         return false;
     }
-    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < 3) {
+    if (strlen(strstr(buffer, "type:") + TYPE_OFFSET) < TYPE_LENGTH) {
         return false;
     }
     if (strstr(buffer, "data:") == NULL) {
@@ -527,26 +795,40 @@ int check_message_fields(const char *buffer) {
     return true;
 }
 
-/*
- * checks if data in buffer is type of CMD.
- * if it's CMD type checks for validity based upon banned words and allowed words.
- * if the message is not type CMD or valid CMD type.
- * received message is sent to other client.
- * Returns: None.
+/**
+ * Validates incoming client messages
+ * Args:
+ *   buffer: Message buffer to check
+ * Operation:
+ *   - Checks message type and format
+ *   - Validates command data if CMD type
+ * Returns:
+ *   Boolean indicating message validity
  */
 int check_message_received(char buffer[4096]) {
     if (!check_message_fields(buffer)) {
         return false;
     }
-    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, CMD_TYPE_LENGTH) ==
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, DATA_CMD_CHECK, TYPE_LENGTH) ==
         CMP_EQUAL) {
         // Validate command data
         return check_command_data(strstr(buffer, "data:") + DATA_OFFSET);
     }
-    return strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", 3) !=
+    return strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "FLG", TYPE_LENGTH) !=
            CMP_EQUAL;
 }
 
+/**
+ * Checks game winning condition
+ * Args:
+ *   clientSocketFD: Client's socket FD
+ *   buffer: Message buffer
+ *   game: Game instance pointer
+ * Operation:
+ *   Compares client flag data for win
+ * Returns:
+ *   Boolean indicating win
+ */
 bool check_winner(const int clientSocketFD, char buffer[4096], Game *game) {
     pthread_mutex_lock(&game->game_mutex);
     for (int i = 0; i < game->acceptedSocketsCount; i++) {
@@ -561,6 +843,18 @@ bool check_winner(const int clientSocketFD, char buffer[4096], Game *game) {
     return false;
 }
 
+/**
+ * Processes and routes client messages
+ * Args:
+ *   clientSocketFD: Client's socket FD
+ *   buffer: Message buffer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Handles game state messages
+ *   - Checks win conditions
+ *   - Routes valid messages
+ * Returns: Boolean indicating if game should end
+ */
 int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Game *game) {
     pthread_mutex_lock(&game->game_mutex);
     if (game->acceptedSocketsCount < MAX_CLIENTS) {
@@ -584,33 +878,59 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
     return false;
 }
 
+/**
+ * Creates encrypted flag file for client
+ * Args:
+ *   buffer: Directory path
+ *   clientSocketFD: Client's socket FD
+ *   game: Game instance pointer
+ * Operation:
+ *   - Generates random flag data
+ *   - Creates and encrypts flag file
+ * Returns: Status code
+ */
 int generate_client_flag(const char *buffer, const int clientSocketFD, Game *game) {
-    char flag_command[1024] = {0};
-    char random_str[32] = {0};
-    char random_key[9] = {0};
-    generate_random_string(random_str, 31);
-    generate_random_string(random_key, 8);
+    char flag_command[FLAG_COMMAND_SIZE] = {NULL_CHAR};
+    char random_str[FLAG_DATA_SIZE] = {NULL_CHAR};
+    char random_key[RANDOM_KEY_SIZE] = {NULL_CHAR};
+    generate_random_string(random_str, FLAG_DATA_SIZE - NULL_CHAR_LEN);
+    generate_random_string(random_key, RANDOM_KEY_SIZE - NULL_CHAR_LEN);
     printf("%s\n", random_key);
     if (snprintf(flag_command, sizeof(flag_command),
                  "echo '%s' > %s/flag.txt && openssl enc -aes-256-cbc -in %s/flag.txt -out %s/flag.txt.tmp -k %s -pbkdf2 && mv %s/flag.txt.tmp %s/flag.txt",
                  random_str, buffer, buffer, buffer, random_key, buffer, buffer) < sizeof(flag_command)) {
-        char flag_command_buffer[2048] = {0};
+        char flag_command_buffer[FLAG_COMMAND_BUFFER_SIZE] = {NULL_CHAR};
         if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
             s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
             for (int i = 0; i < game->acceptedSocketsCount; i++) {
                 if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
                     strcpy(game->game_clients[i].flag_data, random_str);
-                    return 1;
+                    return true;
                 }
             }
         }
     }
-    return 0;
+    return false;
 }
 
+/**
+ * Processes client flag operations
+ * Args:
+ *   buffer: Message buffer
+ *   flag_file_tries: Pointer to attempts counter
+ *   clientSocketFD: Client socket FD
+ *   flag_okay_response: Flag status pointer
+ *   flag_request_dir: Directory request status pointer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Validates flag operations
+ *   - Handles flag file creation
+ *   - Tracks attempts
+ * Returns: Operation status
+ */
 int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
                        int *flag_request_dir, Game *game) {
-    if (*flag_file_tries >= 5) {
+    if (*flag_file_tries >= MAX_FLAG_FILE_TRIES) {
         return false;
     }
     if (!check_message_fields(buffer)) {
@@ -620,8 +940,8 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
         return true;
     }
     if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
-        *flag_okay_response = 0;
-        *flag_request_dir = 0;
+        *flag_okay_response = false;
+        *flag_request_dir = false;
     } else {
         if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
             *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD, game);
@@ -629,40 +949,48 @@ int handle_client_flag(const char *buffer, int *flag_file_tries, const int clien
         }
         if (*flag_request_dir) {
             if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
-                *flag_okay_response = 1;
+                *flag_okay_response = true;
                 return true;
             }
         }
     }
-    if (*flag_request_dir == 0) {
+    if (*flag_request_dir == false) {
         s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
         *flag_file_tries += 1;
     }
     return true;
 }
 
-/*
- * Handles signal, specifically SIGINT (press ctrl+c)
- * (interrupt signal) to safely terminate the server.
- * This function ensures proper cleanup of resources when
- * the server is interrupted, preventing memory leaks and
- * hanging connections.
- * Parameters: signal - The signal number received (e.g., SIGINT).
+/**
+ * Signal handler for graceful server shutdown
+ * Args:
+ *   signal: The signal number received (typically SIGINT)
+ * Operation:
+ *   Sets global stop flag and prints signal info
+ * Returns: void
  */
 void handle_signal(const int signal) {
     // Print a message indicating the signal received
     printf("Caught signal %d\n", signal);
     // Set the `stop` flag to trigger cleanup
-    stop_all_games = 1;
+    stop_all_games = true;
 }
 
+/**
+ * Cleans up resources for terminated games
+ * Operation:
+ *   - Checks each game slot for stopped games
+ *   - Closes pipes and frees memory for finished games
+ *   - Thread-safe cleanup using game mutex
+ * Returns: void
+ */
 void handle_closed_games() {
     for (int i = 0; i < MAX_GAMES; i++) {
         if (games[i]) {
             pthread_mutex_lock(&games[i]->game_mutex);
             if (games[i]->stop_game && games[i]->acceptedSocketsCount == 0) {
-                close(games[i]->stop_pipe[0]);
-                close(games[i]->stop_pipe[1]);
+                close(games[i]->stop_pipe[PIPE_READ]);
+                close(games[i]->stop_pipe[PIPE_WRITE]);
                 pthread_mutex_unlock(&games[i]->game_mutex);
                 pthread_mutex_destroy(&games[i]->game_mutex);
                 free(games[i]);
@@ -675,6 +1003,14 @@ void handle_closed_games() {
     }
 }
 
+/**
+ * Waits for all client threads to complete before server shutdown
+ * Operation:
+ *   - Monitors global client count
+ *   - Uses short sleep intervals to prevent busy waiting
+ *   - Thread-safe access to shared counter
+ * Returns: void
+ */
 void wait_for_all_threads_to_finish() {
     unsigned int local_count = 0;
     while (true) {
@@ -684,13 +1020,20 @@ void wait_for_all_threads_to_finish() {
         if (local_count == 0) {
             break; // Exit the loop when no threads are active
         }
-        usleep(1000); // Sleep for 1ms to avoid busy-waiting
+        usleep(SLEEP); // Sleep for 1ms to avoid busy-waiting
     }
 }
 
-/*
- * creates server socket and address for it.
- * returns 1 for failure 0 for success.
+/**
+ * Socket creation and address binding wrapper
+ * Args:
+ *   port: Port to bind to
+ *   serverSocketFD: Pointer to store socket FD
+ *   server_address: Pointer to store address info
+ * Operation:
+ *   Creates socket and prepares address structure
+ * Returns:
+ *   EXIT_SUCCESS or EXIT_FAILURE
  */
 int config_socket(const int port, int *serverSocketFD, struct sockaddr_in *server_address) {
     *serverSocketFD = createTCPIpv4Socket();
@@ -707,9 +1050,15 @@ int config_socket(const int port, int *serverSocketFD, struct sockaddr_in *serve
     return EXIT_SUCCESS;
 }
 
-/*
- * binds server socket to an address
- * listens on that server socket
+/**
+ * Binds socket and starts listening
+ * Args:
+ *   serverSocketFD: Server socket file descriptor
+ *   server_address: Server address structure
+ * Operation:
+ *   Binds socket and initiates listening state
+ * Returns:
+ *   EXIT_SUCCESS or EXIT_FAILURE
  */
 int bind_and_listen_on_socket(const int serverSocketFD, struct sockaddr_in server_address) {
     if (bind(serverSocketFD, (struct sockaddr *) &server_address, sizeof(server_address)) == SOCKET_INIT_ERROR) {
@@ -729,15 +1078,17 @@ int bind_and_listen_on_socket(const int serverSocketFD, struct sockaddr_in serve
     return EXIT_SUCCESS;
 }
 
-/*
- * Initializes the server socket, binds it to the specified port,
- * and prepares it to listen for incoming connections.
- * This function handles all server setup including address binding,
- * socket creation, and listen queue initialization.
- * Parameters: port - The port number on which the
- * server will listen for incoming connections.
- * Returns: A valid server socket file descriptor if successful;
- * EXIT_FAILURE if there is an error.
+/**
+ * Initializes the server socket with specified configuration
+ * Args:
+ *   port: Port number to bind server to
+ * Operation:
+ *   - Creates TCP/IPv4 socket
+ *   - Binds to address/port
+ *   - Sets non-blocking mode
+ *   - Starts listening
+ * Returns:
+ *   Valid server socket FD or EXIT_FAILURE
  */
 int initServerSocket(const int port) {
     int serverSocketFD;
@@ -766,7 +1117,6 @@ int initServerSocket(const int port) {
  *   0 on successful execution
  *   EXIT_FAILURE if there is an error (e.g., port binding failure)
  */
-
 int main(const int argc, char *argv[]) {
     // Set up signal handler
     signal(SIGINT, handle_signal);
