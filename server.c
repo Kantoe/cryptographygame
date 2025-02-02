@@ -886,7 +886,7 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
  *   game: Game instance pointer
  * Operation:
  *   - Generates random flag data
- *   - Creates and encrypts flag file
+ *   - Creates flag file
  * Returns: Status code
  */
 int generate_client_flag(const char *buffer, const int clientSocketFD, Game *game) {
