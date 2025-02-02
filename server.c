@@ -892,13 +892,10 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
 int generate_client_flag(const char *buffer, const int clientSocketFD, Game *game) {
     char flag_command[FLAG_COMMAND_SIZE] = {NULL_CHAR};
     char random_str[FLAG_DATA_SIZE] = {NULL_CHAR};
-    char random_key[RANDOM_KEY_SIZE] = {NULL_CHAR};
     generate_random_string(random_str, FLAG_DATA_SIZE - NULL_CHAR_LEN);
-    generate_random_string(random_key, RANDOM_KEY_SIZE - NULL_CHAR_LEN);
-    printf("%s\n", random_key);
     if (snprintf(flag_command, sizeof(flag_command),
-                 "echo '%s' > %s/flag.txt && openssl enc -aes-256-cbc -in %s/flag.txt -out %s/flag.txt.tmp -k %s -pbkdf2 && mv %s/flag.txt.tmp %s/flag.txt",
-                 random_str, buffer, buffer, buffer, random_key, buffer, buffer) < sizeof(flag_command)) {
+                 "echo '%s' > %s/flag.txt",
+                 random_str, buffer) < sizeof(flag_command)) {
         char flag_command_buffer[FLAG_COMMAND_BUFFER_SIZE] = {NULL_CHAR};
         if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
             s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
