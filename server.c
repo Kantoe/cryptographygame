@@ -274,8 +274,8 @@ bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
  *   - Tracks attempts
  * Returns: Operation status
  */
-int handle_client_flag(const char *buffer, int *flag_file_tries, int clientSocketFD, int *flag_okay_response,
-                       int *flag_request_dir, Game *game);
+int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int clientSocketFD, bool *flag_okay_response,
+                       bool *flag_request_dir, Game *game);
 
 /**
  * Finds active game with space for client
@@ -365,8 +365,8 @@ void thread_exit(int clientSocketFD, Game *game);
  * Returns:
  *   Boolean indicating if client handling should terminate
  */
-bool handle_client_messages(int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
-                            int *flag_okay_response);
+bool handle_client_messages(int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
+                            bool *flag_okay_response);
 
 /**
  * Waits for all client threads to complete before server shutdown
@@ -609,9 +609,9 @@ void *handle_single_client(void *arg) {
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
     free(arg);
-    int flag_file_tries = 0;
-    int flag_request_dir = 0;
-    int flag_okay_response = 0;
+    unsigned int flag_file_tries = 0;
+    bool flag_request_dir = 0;
+    bool flag_okay_response = 0;
     const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop_all_games && !game->stop_game) {
@@ -689,8 +689,8 @@ void thread_exit(const int clientSocketFD, Game *game) {
  * Returns:
  *   Boolean indicating if client handling should terminate
  */
-bool handle_client_messages(const int clientSocketFD, Game *game, int *flag_file_tries, int *flag_request_dir,
-                            int *flag_okay_response) {
+bool handle_client_messages(const int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
+                            bool *flag_okay_response) {
     // Initialize buffer for incoming message
     char buffer[BUFFER_SIZE] = {NULL_CHAR};
     // Receive data from client
@@ -925,8 +925,9 @@ int generate_client_flag(const char *buffer, const int clientSocketFD, Game *gam
  *   - Tracks attempts
  * Returns: Operation status
  */
-int handle_client_flag(const char *buffer, int *flag_file_tries, const int clientSocketFD, int *flag_okay_response,
-                       int *flag_request_dir, Game *game) {
+int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const int clientSocketFD,
+                       bool *flag_okay_response,
+                       bool *flag_request_dir, Game *game) {
     if (*flag_file_tries >= MAX_FLAG_FILE_TRIES) {
         return false;
     }
