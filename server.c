@@ -21,6 +21,7 @@
 #define WAIT_CLIENT "tlength:69;type:ERR;length:34;data:Wait for second client to connect\n"
 #define SECOND_CLIENT_DISCONNECTED "tlength:66;type:ERR;length:31;data:\nSecond client disconnected ):\n"
 #define DIR_REQUEST "tlength:41;type:FLG;length:7;data:FLG_DIR"
+#define KEY_REQUEST "tlength:41;type:KEY;length:7;data:KEY_DIR"
 #define SOCKET_ERROR -1
 #define SOCKET_INIT_ERROR 0
 #define PORT_ARGV 1
@@ -64,6 +65,7 @@ struct AcceptedSocket {
     int error;
     int acceptedSuccessfully;
     char flag_data[FLAG_DATA_SIZE];
+    char flag_dir[512];
 };
 
 typedef struct {
@@ -276,6 +278,12 @@ bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
  */
 int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int clientSocketFD, bool *flag_okay_response,
                        bool *flag_request_dir, Game *game);
+
+bool generate_client_key(const char *buffer, int clientSocketFD, Game *game);
+
+bool handle_client_key(const char *buffer, unsigned int *key_file_tries, int clientSocketFD,
+                       bool *key_okay_response,
+                       bool *key_request_dir, Game *game);
 
 /**
  * Finds active game with space for client
@@ -618,6 +626,7 @@ void *handle_single_client(void *arg) {
     bool key_okay_response = 0;
     const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+    s_send(clientSocketFD, KEY_REQUEST, strlen(KEY_REQUEST));
     while (!stop_all_games && !game->stop_game) {
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -712,7 +721,9 @@ bool handle_client_messages(const int clientSocketFD, Game *game, unsigned int *
                 return true;
             }
         } else if (!(*key_okay_response && *key_request_dir)) {
-            //
+            if (!handle_client_key(buffer, key_file_tries, clientSocketFD, key_okay_response, key_request_dir, game)) {
+                return true;
+            }
         } else {
             //deal with client message and make an ideal response
             game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
@@ -777,7 +788,7 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     acceptedSocket.acceptedSuccessfully = clientSocketFD > ACCEPTED_SUCCESSFULLY;
     acceptedSocket.error = clientSocketFD < ACCEPTED_SUCCESSFULLY ? clientSocketFD : ACCEPTED_SUCCESSFULLY;
     memset(acceptedSocket.flag_data, NULL_CHAR, sizeof(acceptedSocket.flag_data));
-
+    memset(acceptedSocket.flag_dir, NULL_CHAR, sizeof(acceptedSocket.flag_dir));
     return acceptedSocket;
 }
 
@@ -910,6 +921,7 @@ int generate_client_flag(const char *buffer, const int clientSocketFD, Game *gam
             for (int i = 0; i < game->acceptedSocketsCount; i++) {
                 if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
                     strcpy(game->game_clients[i].flag_data, random_str);
+                    strcpy(game->game_clients[i].flag_dir, buffer);
                     return true;
                 }
             }
@@ -965,6 +977,44 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const 
         *flag_file_tries += 1;
     }
     return true;
+}
+
+bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const int clientSocketFD,
+                       bool *key_okay_response,
+                       bool *key_request_dir, Game *game) {
+    if (*key_file_tries >= MAX_FLAG_FILE_TRIES) {
+        return false;
+    }
+    if (!check_message_fields(buffer)) {
+        return false;
+    }
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "KEY", 3) != CMP_EQUAL) {
+        return true;
+    }
+    if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
+        *key_okay_response = false;
+        *key_request_dir = false;
+    } else {
+        if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*key_request_dir) {
+            *key_request_dir = generate_client_key(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD, game);
+            return true;
+        }
+        if (*key_request_dir) {
+            if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
+                *key_okay_response = true;
+                return true;
+            }
+        }
+    }
+    if (*key_request_dir == false) {
+        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+        *key_file_tries += 1;
+    }
+    return true;
+}
+
+bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
+    return false;
 }
 
 /**
