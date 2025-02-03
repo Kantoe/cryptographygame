@@ -366,7 +366,8 @@ void thread_exit(int clientSocketFD, Game *game);
  *   Boolean indicating if client handling should terminate
  */
 bool handle_client_messages(int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
-                            bool *flag_okay_response);
+                            bool *flag_okay_response, unsigned int *key_file_tries, bool *key_request_dir,
+                            bool *key_okay_response);
 
 /**
  * Waits for all client threads to complete before server shutdown
@@ -612,6 +613,9 @@ void *handle_single_client(void *arg) {
     unsigned int flag_file_tries = 0;
     bool flag_request_dir = 0;
     bool flag_okay_response = 0;
+    unsigned int key_file_tries = 0;
+    bool key_request_dir = 0;
+    bool key_okay_response = 0;
     const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop_all_games && !game->stop_game) {
@@ -633,7 +637,8 @@ void *handle_single_client(void *arg) {
             break;
         }
         if (FD_ISSET(clientSocketFD, &readfds)) {
-            if (handle_client_messages(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response))
+            if (handle_client_messages(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response,
+                                       &key_file_tries, &key_request_dir, &key_okay_response))
                 break;
         }
     }
@@ -690,7 +695,8 @@ void thread_exit(const int clientSocketFD, Game *game) {
  *   Boolean indicating if client handling should terminate
  */
 bool handle_client_messages(const int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
-                            bool *flag_okay_response) {
+                            bool *flag_okay_response, unsigned int *key_file_tries, bool *key_request_dir,
+                            bool *key_okay_response) {
     // Initialize buffer for incoming message
     char buffer[BUFFER_SIZE] = {NULL_CHAR};
     // Receive data from client
@@ -705,6 +711,8 @@ bool handle_client_messages(const int clientSocketFD, Game *game, unsigned int *
                                     flag_request_dir, game)) {
                 return true;
             }
+        } else if (!(*key_okay_response && *key_request_dir)) {
+            //
         } else {
             //deal with client message and make an ideal response
             game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
