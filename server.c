@@ -1014,6 +1014,24 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
 }
 
 bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
+    char key_command[512] = {NULL_CHAR};
+    char random_key[8] = {NULL_CHAR};
+    const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3", "bf-cbc"};
+    // Select a random encryption method
+    srand(time(NULL));
+    const char *selected_method = encryption_methods[
+        rand() % (sizeof(encryption_methods) / sizeof(encryption_methods[0]))];
+    // Generate an 8-character random key
+    generate_random_string(random_key, 8 - NULL_CHAR_LEN);
+    // Command to write key and encryption method into key.txt
+    if (snprintf(key_command, sizeof(key_command), "echo '%s:%s' > %s/key.txt", random_key, selected_method, buffer) <
+        sizeof(key_command)) {
+        char key_command_buffer[512] = {NULL_CHAR};
+        if (prepare_buffer(key_command_buffer, sizeof(key_command_buffer), key_command, "KEY")) {
+            s_send(clientSocketFD, key_command_buffer, strlen(key_command_buffer));
+            return true;
+        }
+    }
     return false;
 }
 
