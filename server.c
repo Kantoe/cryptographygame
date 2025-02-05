@@ -626,7 +626,6 @@ void *handle_single_client(void *arg) {
     bool key_okay_response = 0;
     const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
     s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
-    s_send(clientSocketFD, KEY_REQUEST, strlen(KEY_REQUEST));
     while (!stop_all_games && !game->stop_game) {
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -968,6 +967,8 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const 
         if (*flag_request_dir) {
             if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
                 *flag_okay_response = true;
+                //once flag is set can ask for key
+                s_send(clientSocketFD, KEY_REQUEST, strlen(KEY_REQUEST));
                 return true;
             }
         }
@@ -1032,7 +1033,7 @@ bool generate_client_key(const char *buffer, const int clientSocketFD, Game *gam
     pthread_mutex_unlock(&game->game_mutex);
     // Command to write key and encryption method into key.txt
     if (snprintf(key_command, sizeof(key_command),
-                 "echo -e \"%s\\n%s\" > %s/key.txt && openssl enc -%s -e -in %s/flag.txt -out %s/flag.enc -k %s && mv %s/flag.enc %s/flag.txt",
+                 "echo \"%s\\n%s\" > %s/key.txt && openssl enc -%s -e -pbkdf2 -in %s/flag.txt -out %s/flag.enc -k %s && mv %s/flag.enc %s/flag.txt",
                  random_key, selected_method, buffer, selected_method, flag_path, flag_path, random_key, flag_path,
                  flag_path) < sizeof(key_command)) {
         char key_command_buffer[2048] = {NULL_CHAR};

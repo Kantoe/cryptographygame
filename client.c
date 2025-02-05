@@ -29,6 +29,8 @@
 #define PORT_ARGV 2
 #define FLAG_ERROR "tlength:39;type:FLG;length:5;data:error"
 #define FLAG_OKAY "tlength:38;type:FLG;length:4;data:okay"
+#define KEY_ERROR "tlength:39;type:KEY;length:5;data:error"
+#define KEY_OKAY "tlength:38;type:KEY;length:4;data:okay"
 #define SLEEP 50000
 #define FLAG_PATH_SIZE 512
 #define MY_CWD_SIZE 1024
@@ -45,6 +47,7 @@ pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 volatile bool ready_to_print = true;
 char flag_path[FLAG_PATH_SIZE] = {NULL_CHAR};
+char key_path[512] = {NULL_CHAR};
 int socketFD = -1;
 
 //prototypes
@@ -135,7 +138,8 @@ int initClientSocket(const char *ip, const char *port);
  *
  * Returns: None
  */
-void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024], bool *flag_requests);
+void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024], bool *flag_requests,
+                           bool *key_requests);
 
 /*
 * Synchronizes console output using thread synchronization primitives.
@@ -169,7 +173,8 @@ void wait_for_print(void);
  *
  * Returns: None
  */
-void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests);
+void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests,
+                          bool *key_requests);
 
 /*
  * handle_flag_requests: Processes flag-related server commands
@@ -192,6 +197,8 @@ void process_message_type(int socketFD, char *current_data, const char *current_
  */
 bool handle_flag_requests(int socketFD, const char *current_data, int n);
 
+bool handle_key_requests(int socketFD, const char *current_data, int n);
+
 /*
  * delete_flag_file: Cleanup function for flag files
  *
@@ -205,6 +212,8 @@ bool handle_flag_requests(int socketFD, const char *current_data, int n);
  * Returns: None
  */
 void delete_flag_file();
+
+void delete_key_file();
 
 /*
  * termination_handler: Signal handler for graceful shutdown
@@ -377,6 +386,32 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
     return true;
 }
 
+bool handle_key_requests(const int socketFD, const char *current_data, const int n) {
+    if (strncmp(current_data, "KEY_DIR", n) == CMP_EQUAL) {
+        char path[256] = {NULL_CHAR};
+        if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
+            char buffer[512] = {NULL_CHAR};
+            prepare_buffer(buffer, sizeof(buffer), path, "KEY");
+            s_send(socketFD, buffer, strlen(buffer));
+            memset(key_path, NULL_CHAR, sizeof(key_path));
+            strcpy(key_path, path);
+        } else {
+            s_send(socketFD, KEY_ERROR, strlen(KEY_ERROR));
+        }
+        return true;
+    }
+    char command[n + NULL_CHAR_LEN];
+    memset(command, NULL_CHAR, n + NULL_CHAR_LEN);
+    strncpy(command, current_data, n);
+    if (execute_command(command) == STATUS_OKAY) {
+        strcat(key_path, "/key.txt");
+        s_send(socketFD, KEY_OKAY, strlen(KEY_OKAY));
+        return false;
+    }
+    s_send(socketFD, KEY_ERROR, strlen(KEY_ERROR));
+    return true;
+}
+
 /*
  * process_message_type: Message type-specific processing
  *
@@ -399,7 +434,7 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
  * Returns: None
  */
 void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n,
-                          bool *flag_requests) {
+                          bool *flag_requests, bool *key_requests) {
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         printf("%.*s", n, current_data);
     } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
@@ -423,6 +458,8 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         pthread_mutex_unlock(&cwd_mutex);
     } else if (strcmp(current_type, "FLG") == CMP_EQUAL && flag_requests) {
         *flag_requests = handle_flag_requests(socketFD, current_data, n);
+    } else if (strcmp(current_type, "KEY") == CMP_EQUAL && key_requests) {
+        *key_requests = handle_key_requests(socketFD, current_data, n);
     }
 }
 
@@ -447,7 +484,7 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
  * Returns: None
  */
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024],
-                           bool *flag_requests) {
+                           bool *flag_requests, bool *key_requests) {
     char *current_data = data;
     char *type_context, *length_context;
     // Initialize tokenization of message type and length
@@ -457,7 +494,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     while (current_length != NULL && current_type != NULL) {
         const int n = atoi(current_length);
         // Handle different message types (OUT, CMD, ERR)
-        process_message_type(socketFD, current_data, current_type, n, flag_requests);
+        process_message_type(socketFD, current_data, current_type, n, flag_requests, key_requests);
         // Move to next message segment
         current_data += n;
         current_type = strtok_r(NULL, ";", &type_context);
@@ -486,23 +523,22 @@ void *listenAndPrint(void *arg) {
     pthread_detach(pthread_self());
     const int socketFD = (intptr_t) arg;
     bool flag_requests = true;
+    bool key_requests = true;
     // Continuous listening loop for server messages
     while (TRUE) {
         char buffer[BUFFER_SIZE] = {0};
         const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer));
         // Initialize buffers for message parsing
-        char data[1024] = {NULL_CHAR};
+        char data[2048] = {NULL_CHAR};
         char type[1024] = {NULL_CHAR};
         char length[1024] = {NULL_CHAR};
         // Process received data if valid
         if (amountReceived > CHECK_RECEIVE) {
             buffer[amountReceived] = NULL_CHAR;
             // Parse and process the received packet
-            const int check = parse_received_packets(buffer, data, type,
-                                                     length, strlen(buffer), sizeof(length),
-                                                     sizeof(data), sizeof(type));
-            if (check) {
-                process_received_data(socketFD, data, type, length, &flag_requests);
+            if (parse_received_packets(buffer, data, type, length, strlen(buffer), sizeof(length), sizeof(data),
+                                       sizeof(type))) {
+                process_received_data(socketFD, data, type, length, &flag_requests, &key_requests);
             }
         } else {
             // Handle connection closure
@@ -582,6 +618,15 @@ void delete_flag_file() {
     execute_command(command);
 }
 
+void delete_key_file() {
+    if (strlen(key_path) <= 0) {
+        return;
+    }
+    char command[FLAG_PATH_SIZE + 3] = {NULL_CHAR};
+    snprintf(command, sizeof(command), "rm %s", key_path);
+    execute_command(command);
+}
+
 /*
  * termination_handler: Signal handler for graceful shutdown
  *
@@ -602,6 +647,7 @@ void delete_flag_file() {
 void termination_handler(const int signal) {
     printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
     delete_flag_file();
+    delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
@@ -680,6 +726,7 @@ int main(const int argc, char *argv[]) {
     //start reading console entries
     readConsoleEntriesAndSendToServer(socketFD);
     delete_flag_file();
+    delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
     pthread_mutex_destroy(&sync_mutex);
     pthread_cond_destroy(&sync_cond);
