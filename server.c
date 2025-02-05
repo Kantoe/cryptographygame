@@ -54,7 +54,7 @@
 #define PIPE_READ_BUF_SIZE 1
 #define FLAG_DATA_SIZE 32
 #define RANDOM_KEY_SIZE 9
-#define FLAG_COMMAND_SIZE 1024
+#define FLAG_COMMAND_SIZE 512
 #define FLAG_COMMAND_BUFFER_SIZE 2048
 #define MAX_FLAG_FILE_TRIES 5
 
@@ -1014,19 +1014,28 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
 }
 
 bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
-    char key_command[512] = {NULL_CHAR};
+    char key_command[1536] = {NULL_CHAR};
     char random_key[8] = {NULL_CHAR};
     const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3", "bf-cbc"};
     // Select a random encryption method
-    srand(time(NULL));
-    const char *selected_method = encryption_methods[
-        rand() % (sizeof(encryption_methods) / sizeof(encryption_methods[0]))];
+    const char *selected_method = encryption_methods[arc4random_uniform(
+        sizeof(encryption_methods) / sizeof(encryption_methods[0]))];
     // Generate an 8-character random key
     generate_random_string(random_key, 8 - NULL_CHAR_LEN);
+    char *flag_path = NULL;
+    pthread_mutex_lock(&game->game_mutex);
+    for (int i = 0; i < game->acceptedSocketsCount; i++) {
+        if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
+            flag_path = game->game_clients[i].flag_dir;
+        }
+    }
+    pthread_mutex_unlock(&game->game_mutex);
     // Command to write key and encryption method into key.txt
-    if (snprintf(key_command, sizeof(key_command), "echo '%s:%s' > %s/key.txt", random_key, selected_method, buffer) <
-        sizeof(key_command)) {
-        char key_command_buffer[512] = {NULL_CHAR};
+    if (snprintf(key_command, sizeof(key_command),
+                 "echo -e \"%s\\n%s\" > %s/key.txt && openssl enc -%s -e -in %s/flag.txt -out %s/flag.enc -k %s && mv %s/flag.enc %s/flag.txt",
+                 random_key, selected_method, buffer, selected_method, flag_path, flag_path, random_key, flag_path,
+                 flag_path) < sizeof(key_command)) {
+        char key_command_buffer[2048] = {NULL_CHAR};
         if (prepare_buffer(key_command_buffer, sizeof(key_command_buffer), key_command, "KEY")) {
             s_send(clientSocketFD, key_command_buffer, strlen(key_command_buffer));
             return true;
