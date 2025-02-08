@@ -11,11 +11,13 @@
 	{
 		"commands" : 
 		[
-			"add_library"
+			"add_library",
+			"target_include_directories"
 		],
 		"files" : 
 		[
-			"/home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt"
+			"/home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt",
+			"CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -27,6 +29,15 @@
 				"file" : 0,
 				"line" : 6,
 				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 9,
+				"parent" : 2
 			}
 		]
 	},
@@ -37,6 +48,13 @@
 			[
 				{
 					"fragment" : "-g -std=gnu11 -fdiagnostics-color=always"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "/home/idokantor/CLionProjects/cryptography_game_util"
 				}
 			],
 			"language" : "C",

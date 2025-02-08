@@ -41,6 +41,38 @@ include CMakeFiles/rules.ninja
 
 cmake_ninja_workdir = /home/idokantor/CLionProjects/cryptography_game/cmake-build-debug/
 # =============================================================================
+# Object build statements for STATIC_LIBRARY target gui_fltk
+
+
+#############################################
+# Order-only phony target for gui_fltk
+
+build cmake_object_order_depends_target_gui_fltk: phony || cmake_object_order_depends_target_cryptography_game_util
+
+build CMakeFiles/gui_fltk.dir/gui_fltk.cpp.o: CXX_COMPILER__gui_fltk_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game/gui_fltk.cpp || cmake_object_order_depends_target_gui_fltk
+  DEP_FILE = CMakeFiles/gui_fltk.dir/gui_fltk.cpp.o.d
+  FLAGS = -g -std=gnu++11 -fPIC -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
+  OBJECT_DIR = CMakeFiles/gui_fltk.dir
+  OBJECT_FILE_DIR = CMakeFiles/gui_fltk.dir
+
+
+# =============================================================================
+# Link build statements for STATIC_LIBRARY target gui_fltk
+
+
+#############################################
+# Link the static library libgui_fltk.a
+
+build libgui_fltk.a: CXX_STATIC_LIBRARY_LINKER__gui_fltk_Debug CMakeFiles/gui_fltk.dir/gui_fltk.cpp.o || /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
+  LANGUAGE_COMPILE_FLAGS = -g
+  OBJECT_DIR = CMakeFiles/gui_fltk.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = libgui_fltk.a
+  TARGET_PDB = gui_fltk.a.dbg
+
+# =============================================================================
 # Object build statements for EXECUTABLE target Server
 
 
@@ -80,7 +112,7 @@ build Server: C_EXECUTABLE_LINKER__Server_Debug CMakeFiles/Server.dir/server.c.o
 #############################################
 # Order-only phony target for Client
 
-build cmake_object_order_depends_target_Client: phony || cmake_object_order_depends_target_cryptography_game_util
+build cmake_object_order_depends_target_Client: phony || cmake_object_order_depends_target_cryptography_game_util cmake_object_order_depends_target_gui_fltk
 
 build CMakeFiles/Client.dir/client.c.o: C_COMPILER__Client_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game/client.c || cmake_object_order_depends_target_Client
   DEP_FILE = CMakeFiles/Client.dir/client.c.o.d
@@ -97,47 +129,14 @@ build CMakeFiles/Client.dir/client.c.o: C_COMPILER__Client_unscanned_Debug /home
 #############################################
 # Link the executable Client
 
-build Client: C_EXECUTABLE_LINKER__Client_Debug CMakeFiles/Client.dir/client.c.o | /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a || /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
+build Client: CXX_EXECUTABLE_LINKER__Client_Debug CMakeFiles/Client.dir/client.c.o | /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a libgui_fltk.a /usr/lib/x86_64-linux-gnu/libfltk_images.so /usr/lib/x86_64-linux-gnu/libfltk_forms.so /usr/lib/x86_64-linux-gnu/libfltk_gl.so /usr/lib/x86_64-linux-gnu/libfltk.so /usr/lib/x86_64-linux-gnu/libSM.so /usr/lib/x86_64-linux-gnu/libICE.so /usr/lib/x86_64-linux-gnu/libX11.so /usr/lib/x86_64-linux-gnu/libXext.so /usr/lib/x86_64-linux-gnu/libm.so /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a || /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a libgui_fltk.a
   FLAGS = -g
-  LINK_LIBRARIES = /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
+  LINK_LIBRARIES = /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a  libgui_fltk.a  /usr/lib/x86_64-linux-gnu/libfltk_images.so  /usr/lib/x86_64-linux-gnu/libfltk_forms.so  /usr/lib/x86_64-linux-gnu/libfltk_gl.so  /usr/lib/x86_64-linux-gnu/libfltk.so  /usr/lib/x86_64-linux-gnu/libSM.so  /usr/lib/x86_64-linux-gnu/libICE.so  /usr/lib/x86_64-linux-gnu/libX11.so  /usr/lib/x86_64-linux-gnu/libXext.so  -lm  -lpthread  -lstdc++  /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
   OBJECT_DIR = CMakeFiles/Client.dir
   POST_BUILD = :
   PRE_LINK = :
   TARGET_FILE = Client
   TARGET_PDB = Client.dbg
-
-# =============================================================================
-# Object build statements for EXECUTABLE target GUI
-
-
-#############################################
-# Order-only phony target for GUI
-
-build cmake_object_order_depends_target_GUI: phony || cmake_object_order_depends_target_cryptography_game_util
-
-build CMakeFiles/GUI.dir/gui.c.o: C_COMPILER__GUI_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game/gui.c || cmake_object_order_depends_target_GUI
-  DEP_FILE = CMakeFiles/GUI.dir/gui.c.o.d
-  FLAGS = -g -std=gnu11 -fdiagnostics-color=always -pthread
-  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util -I/usr/include/gtk-3.0 -I/usr/include/pango-1.0 -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -I/usr/include/harfbuzz -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/libmount -I/usr/include/blkid -I/usr/include/fribidi -I/usr/include/cairo -I/usr/include/pixman-1 -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/webp -I/usr/include/gio-unix-2.0 -I/usr/include/atk-1.0 -I/usr/include/at-spi2-atk/2.0 -I/usr/include/at-spi-2.0 -I/usr/include/dbus-1.0 -I/usr/lib/x86_64-linux-gnu/dbus-1.0/include
-  OBJECT_DIR = CMakeFiles/GUI.dir
-  OBJECT_FILE_DIR = CMakeFiles/GUI.dir
-
-
-# =============================================================================
-# Link build statements for EXECUTABLE target GUI
-
-
-#############################################
-# Link the executable GUI
-
-build GUI: C_EXECUTABLE_LINKER__GUI_Debug CMakeFiles/GUI.dir/gui.c.o | /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a || /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
-  FLAGS = -g
-  LINK_LIBRARIES = /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a  -lgtk-3  -lgdk-3  -lz  -lpangocairo-1.0  -lpango-1.0  -lharfbuzz  -latk-1.0  -lcairo-gobject  -lcairo  -lgdk_pixbuf-2.0  -lgio-2.0  -lgobject-2.0  -lglib-2.0
-  OBJECT_DIR = CMakeFiles/GUI.dir
-  POST_BUILD = :
-  PRE_LINK = :
-  TARGET_FILE = GUI
-  TARGET_PDB = GUI.dbg
 
 
 #############################################
@@ -179,30 +178,35 @@ build cmake_object_order_depends_target_cryptography_game_util: phony || .
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/networking.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/networking.c || cmake_object_order_depends_target_cryptography_game_util
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/networking.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/commands.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/commands.c || cmake_object_order_depends_target_cryptography_game_util
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/commands.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/packet_parse_and_build.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/packet_parse_and_build.c || cmake_object_order_depends_target_cryptography_game_util
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/packet_parse_and_build.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/security.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/security.c || cmake_object_order_depends_target_cryptography_game_util
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/security.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o: C_COMPILER__cryptography_game_util_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/flag_file.c || cmake_object_order_depends_target_cryptography_game_util
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir/flag_file.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/cryptography_game_util.dir
 
@@ -234,6 +238,7 @@ build cmake_object_order_depends_target_Test: phony || cmake_object_order_depend
 build /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o: C_COMPILER__Test_unscanned_Debug /home/idokantor/CLionProjects/cryptography_game_util/test.c || cmake_object_order_depends_target_Test
   DEP_FILE = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir/test.c.o.d
   FLAGS = -g -std=gnu11 -fdiagnostics-color=always
+  INCLUDES = -I/home/idokantor/CLionProjects/cryptography_game_util
   OBJECT_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir
   OBJECT_FILE_DIR = /home/idokantor/CLionProjects/cryptography_game_util/build/CMakeFiles/Test.dir
 
@@ -284,6 +289,8 @@ build Test: phony /home/idokantor/CLionProjects/cryptography_game_util/build/Tes
 
 build cryptography_game_util: phony /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
 
+build gui_fltk: phony libgui_fltk.a
+
 build libcryptography_game_util.a: phony /home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a
 
 # =============================================================================
@@ -294,7 +301,7 @@ build libcryptography_game_util.a: phony /home/idokantor/CLionProjects/cryptogra
 #############################################
 # Folder: /home/idokantor/CLionProjects/cryptography_game/cmake-build-debug
 
-build all: phony Server Client GUI /home/idokantor/CLionProjects/cryptography_game_util/build/all
+build all: phony libgui_fltk.a Server Client /home/idokantor/CLionProjects/cryptography_game_util/build/all
 
 # =============================================================================
 
@@ -310,14 +317,14 @@ build /home/idokantor/CLionProjects/cryptography_game_util/build/all: phony /hom
 #############################################
 # Re-run CMake if any of its inputs changed.
 
-build build.ninja: RERUN_CMAKE | /home/idokantor/CLionProjects/cryptography_game/CMakeLists.txt /home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCommonLanguageInclude.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeGenericSystem.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeInitializeConfigs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeLanguageInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInitialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPkgConfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-Initialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.29.6/CMakeCCompiler.cmake CMakeFiles/3.29.6/CMakeSystem.cmake
+build build.ninja: RERUN_CMAKE | /home/idokantor/CLionProjects/cryptography_game/CMakeLists.txt /home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCXXInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCommonLanguageInclude.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeGenericSystem.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeInitializeConfigs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeLanguageInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInitialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CheckFunctionExists.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CheckLibraryExists.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-CXX.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFLTK.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFontconfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFreetype.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindOpenGL.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPkgConfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindX11.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-CXX.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-Initialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/UnixPaths.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/SelectLibraryConfigurations.cmake /usr/lib/fltk/FLTK-Targets-none.cmake /usr/lib/fltk/FLTK-Targets.cmake /usr/lib/fltk/FLTKConfig.cmake CMakeCache.txt CMakeFiles/3.29.6/CMakeCCompiler.cmake CMakeFiles/3.29.6/CMakeCXXCompiler.cmake CMakeFiles/3.29.6/CMakeSystem.cmake
   pool = console
 
 
 #############################################
 # A missing CMake input file is not an error.
 
-build /home/idokantor/CLionProjects/cryptography_game/CMakeLists.txt /home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCommonLanguageInclude.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeGenericSystem.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeInitializeConfigs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeLanguageInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInitialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPkgConfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-Initialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.29.6/CMakeCCompiler.cmake CMakeFiles/3.29.6/CMakeSystem.cmake: phony
+build /home/idokantor/CLionProjects/cryptography_game/CMakeLists.txt /home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCXXInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeCommonLanguageInclude.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeGenericSystem.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeInitializeConfigs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeLanguageInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInformation.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CMakeSystemSpecificInitialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CheckFunctionExists.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/CheckLibraryExists.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU-CXX.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Compiler/GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFLTK.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFontconfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindFreetype.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindOpenGL.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPkgConfig.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindX11.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-C.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU-CXX.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-GNU.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux-Initialize.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/Linux.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/Platform/UnixPaths.cmake /opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/SelectLibraryConfigurations.cmake /usr/lib/fltk/FLTK-Targets-none.cmake /usr/lib/fltk/FLTK-Targets.cmake /usr/lib/fltk/FLTKConfig.cmake CMakeCache.txt CMakeFiles/3.29.6/CMakeCCompiler.cmake CMakeFiles/3.29.6/CMakeCXXCompiler.cmake CMakeFiles/3.29.6/CMakeSystem.cmake: phony
 
 
 #############################################

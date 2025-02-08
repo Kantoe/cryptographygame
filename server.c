@@ -1017,7 +1017,7 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
 bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
     char key_command[1536] = {NULL_CHAR};
     char random_key[8] = {NULL_CHAR};
-    const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3", "bf-cbc"};
+    const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3"};
     // Select a random encryption method
     const char *selected_method = encryption_methods[arc4random_uniform(
         sizeof(encryption_methods) / sizeof(encryption_methods[0]))];

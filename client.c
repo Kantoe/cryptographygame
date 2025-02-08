@@ -9,6 +9,7 @@
 #include <signal.h>
 #include "cryptography_game_util.h"
 #include "flag_file.h"
+#include "gui_fltk.h"
 
 //defines
 #define CORRECT_ARGC 3
@@ -16,7 +17,6 @@
 #define REPLACE_NEWLINE 0
 #define CHECK_RECEIVE 0
 #define NULL_CHAR 0
-#define TRUE 1
 #define BUFFER_SIZE 4096
 #define CHECK_LINE_SIZE 0
 #define CHECK_EXIT 0
@@ -43,9 +43,6 @@ volatile int connectionClosed = 0;
 char my_cwd[MY_CWD_SIZE] = {NULL_CHAR};
 char command_cwd[COMMAND_CWD_SIZE] = {NULL_CHAR};
 pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t sync_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
-volatile bool ready_to_print = true;
 char flag_path[FLAG_PATH_SIZE] = {NULL_CHAR};
 char key_path[512] = {NULL_CHAR};
 int socketFD = -1;
@@ -142,17 +139,6 @@ void process_received_data(int socketFD, char data[1024], char type[1024], char 
                            bool *key_requests);
 
 /*
-* Synchronizes console output using thread synchronization primitives.
-* This function uses mutex locks and condition variables to ensure
-* thread-safe console output. It waits for the ready_to_print signal,
-* then prints the current working directory prompt. Used to coordinate
-* output between multiple threads.
-* Parameters: None
-* Returns: None
-*/
-void wait_for_print(void);
-
-/*
  * process_message_type: Message type-specific processing
  *
  * Args:
@@ -173,7 +159,7 @@ void wait_for_print(void);
  *
  * Returns: None
  */
-void process_message_type(int socketFD, char *current_data, const char *current_type, int n, bool *flag_requests,
+void process_message_type(int socketFD, const char *current_data, const char *current_type, int n, bool *flag_requests,
                           bool *key_requests);
 
 /*
@@ -249,28 +235,6 @@ void termination_handler(int signal);
 void init_signal_handle();
 
 /*
-* Synchronizes console output using thread synchronization primitives.
-* This function uses mutex locks and condition variables to ensure
-* thread-safe console output. It waits for the ready_to_print signal,
-* then prints the current working directory prompt. Used to coordinate
-* output between multiple threads.
-* Parameters: None
-* Returns: None
-*/
-void wait_for_print(void) {
-    // Wait until allowed to print
-    pthread_mutex_lock(&sync_mutex);
-    while (!ready_to_print) {
-        pthread_cond_wait(&sync_cond, &sync_mutex);
-    }
-    ready_to_print = false; // Reset the flag
-    pthread_mutex_unlock(&sync_mutex);
-    pthread_mutex_lock(&cwd_mutex);
-    printf("%s$ ", my_cwd);
-    pthread_mutex_unlock(&cwd_mutex);
-}
-
-/*
  * readConsoleEntriesAndSendToServer: Main input processing loop
  *
  * Args:
@@ -291,7 +255,6 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
     size_t lineSize = 0;
     // Main loop for reading and sending messages
     while (!connectionClosed) {
-        wait_for_print();
         const ssize_t charCount = getline(&line, &lineSize, stdin);
         // Process input only if valid characters were read
         if (charCount > CHECK_LINE_SIZE) {
@@ -433,12 +396,14 @@ bool handle_key_requests(const int socketFD, const char *current_data, const int
  *
  * Returns: None
  */
-void process_message_type(const int socketFD, char *current_data, const char *current_type, const int n,
+void process_message_type(const int socketFD, const char *current_data, const char *current_type, const int n,
                           bool *flag_requests, bool *key_requests) {
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
-        printf("%.*s", n, current_data);
+        char temp[n + 1];
+        strncpy(temp, current_data, n);
+        temp[n] = '\0';
+        append_to_text_view(temp);
     } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
-        // Allocate memory for command and process it
         char *command = malloc(n + NULL_CHAR_LEN);
         if (command != NULL) {
             strncpy(command, current_data, n);
@@ -450,11 +415,15 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
         pthread_mutex_unlock(&cwd_mutex);
         free(command);
     } else if (strcmp(current_type, "ERR") == CMP_EQUAL) {
-        fprintf(stderr, "\033[1;31m%.*s\033[0m", n, current_data);
+        char temp[n + 1];
+        strncpy(temp, current_data, n);
+        temp[n] = '\0';
+        append_to_text_view(temp);
     } else if (strcmp(current_type, "CWD") == CMP_EQUAL) {
         pthread_mutex_lock(&cwd_mutex);
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
         strncpy(my_cwd, current_data, n);
+        update_cwd_label(my_cwd);
         pthread_mutex_unlock(&cwd_mutex);
     } else if (strcmp(current_type, "FLG") == CMP_EQUAL && flag_requests) {
         *flag_requests = handle_flag_requests(socketFD, current_data, n);
@@ -485,7 +454,7 @@ void process_message_type(const int socketFD, char *current_data, const char *cu
  */
 void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024],
                            bool *flag_requests, bool *key_requests) {
-    char *current_data = data;
+    const char *current_data = data;
     char *type_context, *length_context;
     // Initialize tokenization of message type and length
     const char *current_type = strtok_r(type, ";", &type_context);
@@ -525,7 +494,7 @@ void *listenAndPrint(void *arg) {
     bool flag_requests = true;
     bool key_requests = true;
     // Continuous listening loop for server messages
-    while (TRUE) {
+    while (true) {
         char buffer[BUFFER_SIZE] = {0};
         const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer));
         // Initialize buffers for message parsing
@@ -542,18 +511,10 @@ void *listenAndPrint(void *arg) {
             }
         } else {
             // Handle connection closure
-            pthread_mutex_lock(&sync_mutex);
-            ready_to_print = true;
-            pthread_cond_signal(&sync_cond);
-            pthread_mutex_unlock(&sync_mutex);
             printf("\nConnection closed, press any key to exit\n");
             connectionClosed = true;
             break;
         }
-        pthread_mutex_lock(&sync_mutex);
-        ready_to_print = true;
-        pthread_cond_signal(&sync_cond);
-        pthread_mutex_unlock(&sync_mutex);
     }
     close(socketFD);
     return NULL;
@@ -646,11 +607,10 @@ void delete_key_file() {
  */
 void termination_handler(const int signal) {
     printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
+    printf("exiting...\n");
     delete_flag_file();
     delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
-    pthread_mutex_destroy(&sync_mutex);
-    pthread_cond_destroy(&sync_cond);
     close(socketFD);
     exit(signal + SIGNAL_CODE);
 }
@@ -719,17 +679,18 @@ int main(const int argc, char *argv[]) {
     }
     strcpy(my_cwd, "/home");
     strcpy(command_cwd, "/home");
+    update_cwd_label(my_cwd);
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD);
     //initiate signal handler
     init_signal_handle();
     //start reading console entries
-    readConsoleEntriesAndSendToServer(socketFD);
+    //readConsoleEntriesAndSendToServer(socketFD);
+    start_gui(socketFD);
+    printf("exiting...\n");
     delete_flag_file();
     delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
-    pthread_mutex_destroy(&sync_mutex);
-    pthread_cond_destroy(&sync_cond);
     close(socketFD);
     return EXIT_SUCCESS;
 }

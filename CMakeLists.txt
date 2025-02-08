@@ -1,33 +1,41 @@
 cmake_minimum_required(VERSION 3.28.3)
-project(cryptography_game C)
+project(cryptography_game C CXX)  # Add CXX here
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)  # Add C++ standard
 
-add_executable(Server server.c)
-
+# Add the cryptography_game_util subdirectory and link
 add_subdirectory(/home/idokantor/CLionProjects/cryptography_game_util /home/idokantor/CLionProjects/cryptography_game_util/build)
+target_include_directories(cryptography_game_util PUBLIC /home/idokantor/CLionProjects/cryptography_game_util)
 
+# Find FLTK package
+find_package(FLTK REQUIRED)
+
+# Add GUI Library
+add_library(gui_fltk STATIC gui_fltk.cpp)
+set_target_properties(gui_fltk PROPERTIES
+        LINKER_LANGUAGE CXX
+        POSITION_INDEPENDENT_CODE ON
+)
+target_link_libraries(gui_fltk PRIVATE
+        fltk
+        fltk_images
+        cryptography_game_util
+)
+target_include_directories(gui_fltk PUBLIC ${FLTK_INCLUDE_DIRS})
+
+# Add Server Executable
+add_executable(Server server.c)
 target_include_directories(Server PUBLIC /home/idokantor/CLionProjects/cryptography_game_util)
-
 target_link_libraries(Server cryptography_game_util)
 
+# Add Client Executable
 add_executable(Client client.c)
-
 target_include_directories(Client PUBLIC /home/idokantor/CLionProjects/cryptography_game_util)
-
-target_link_libraries(Client cryptography_game_util)
-
-add_executable(GUI gui.c)
-
-target_include_directories(GUI PUBLIC /home/idokantor/CLionProjects/cryptography_game_util)
-
-target_link_libraries(GUI cryptography_game_util)
-
-# Add at the top, after project()
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-
-# For the GUI target, add:
-target_link_libraries(GUI ${GTK3_LIBRARIES})
-target_include_directories(GUI PUBLIC ${GTK3_INCLUDE_DIRS})
-target_compile_options(GUI PUBLIC ${GTK3_CFLAGS_OTHER})
+target_link_libraries(Client
+        cryptography_game_util
+        gui_fltk
+        ${FLTK_LIBRARIES}
+        pthread
+        stdc++  # Add C++ standard library
+)

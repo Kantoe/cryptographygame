@@ -45,6 +45,13 @@
 					"fragment" : "-g -std=gnu11 -fdiagnostics-color=always"
 				}
 			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 2,
+					"path" : "/home/idokantor/CLionProjects/cryptography_game_util"
+				}
+			],
 			"language" : "C",
 			"languageStandard" : 
 			{

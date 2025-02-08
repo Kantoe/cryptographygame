@@ -21,7 +21,7 @@
 					[
 						0,
 						1,
-						2
+						4
 					]
 				},
 				{
@@ -36,8 +36,8 @@
 					"source" : "/home/idokantor/CLionProjects/cryptography_game_util",
 					"targetIndexes" : 
 					[
-						3,
-						4
+						2,
+						3
 					]
 				}
 			],
@@ -58,7 +58,7 @@
 					[
 						0,
 						1,
-						2
+						4
 					]
 				},
 				{
@@ -70,8 +70,8 @@
 					"parentIndex" : 0,
 					"targetIndexes" : 
 					[
-						3,
-						4
+						2,
+						3
 					]
 				}
 			],
@@ -80,37 +80,37 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "Client::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-Client-Debug-b1813cf7e9ee414880a2.json",
+					"jsonFile" : "target-Client-Debug-28e9f04f9b99f7517ef4.json",
 					"name" : "Client",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 0,
-					"id" : "GUI::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-GUI-Debug-7c0394ba335db3faa580.json",
-					"name" : "GUI",
-					"projectIndex" : 0
-				},
-				{
-					"directoryIndex" : 0,
 					"id" : "Server::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-Server-Debug-4c344ccd03668b2303e8.json",
+					"jsonFile" : "target-Server-Debug-75266706b9d4f3c43053.json",
 					"name" : "Server",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 1,
 					"id" : "Test::@27bcafd08510023a8fc6",
-					"jsonFile" : "target-Test-Debug-574d3b815cc42e664a4d.json",
+					"jsonFile" : "target-Test-Debug-edc7846ef90409db64f0.json",
 					"name" : "Test",
 					"projectIndex" : 1
 				},
 				{
 					"directoryIndex" : 1,
 					"id" : "cryptography_game_util::@27bcafd08510023a8fc6",
-					"jsonFile" : "target-cryptography_game_util-Debug-179529b7add27a8a5b45.json",
+					"jsonFile" : "target-cryptography_game_util-Debug-bb90d34954be43d24217.json",
 					"name" : "cryptography_game_util",
 					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "gui_fltk::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-gui_fltk-Debug-f77afa466b95c77d0f9c.json",
+					"name" : "gui_fltk",
+					"projectIndex" : 0
 				}
 			]
 		}
