@@ -511,7 +511,7 @@ void *listenAndPrint(void *arg) {
             }
         } else {
             // Handle connection closure
-            printf("\nConnection closed, press any key to exit\n");
+            append_to_text_view("\nConnection closed, close window\n");
             connectionClosed = true;
             break;
         }
