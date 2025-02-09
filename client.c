@@ -84,24 +84,6 @@ void startListeningAndPrintMessagesOnNewThread(int socketFD);
 void *listenAndPrint(void *arg);
 
 /*
- * readConsoleEntriesAndSendToServer: Main input processing loop
- *
- * Args:
- * - socketFD: File descriptor for the connected socket
- *
- * Purpose: Reads user input and sends formatted commands to server
- *
- * Operation:
- * 1. Continuously reads lines from stdin until connection closes
- * 2. Removes trailing newlines and formats input into command buffer
- * 3. Handles special cases like 'exit' command and connection closure
- * 4. Uses prepare_buffer to format commands before sending
- *
- * Returns: None
- */
-//void readConsoleEntriesAndSendToServer(int socketFD);
-
-/*
  * Initializes the client socket, connects to the server,
  * and returns the socket file descriptor. This function handles all network
  * setup including IPv4 address creation and connection establishment.
@@ -198,6 +180,18 @@ bool handle_key_requests(int socketFD, const char *current_data, int n);
  */
 void delete_flag_file();
 
+/*
+ * delete_key_file: Cleanup function for key files
+ *
+ * Purpose: Removes key file at path stored in key_path
+ *
+ * Operation:
+ * 1. Checks if key_path is set
+ * 2. Constructs rm command
+ * 3. Executes command to delete file
+ *
+ * Returns: None
+ */
 void delete_key_file();
 
 /*
@@ -232,56 +226,6 @@ void termination_handler(int signal);
  * Returns: None
  */
 void init_signal_handle();
-
-/*
- * readConsoleEntriesAndSendToServer: Main input processing loop
- *
- * Args:
- * - socketFD: File descriptor for the connected socket
- *
- * Purpose: Reads user input and sends formatted commands to server
- *
- * Operation:
- * 1. Continuously reads lines from stdin until connection closes
- * 2. Removes trailing newlines and formats input into command buffer
- * 3. Handles special cases like 'exit' command and connection closure
- * 4. Uses prepare_buffer to format commands before sending
- *
- * Returns: None
- */
-/*void readConsoleEntriesAndSendToServer(const int socketFD) {
-    char *line = NULL;
-    size_t lineSize = 0;
-    // Main loop for reading and sending messages
-    while (!connectionClosed) {
-        const ssize_t charCount = getline(&line, &lineSize, stdin);
-        // Process input only if valid characters were read
-        if (charCount > CHECK_LINE_SIZE) {
-            char buffer[BUFFER_SIZE] = {NULL_CHAR};
-            // Remove trailing newline and prepare the message
-            line[charCount - REMOVE_NEWLINE] = REPLACE_NEWLINE;
-            if (charCount <= BUFFER_SIZE) {
-                sprintf(buffer, "%s", line);
-            }
-            // Check for connection status and exit command
-            if (connectionClosed) {
-                break;
-            }
-            if (strcmp(line, "exit") == CHECK_EXIT) {
-                break;
-            }
-            // Prepare and send the message to server
-            prepare_buffer(buffer, sizeof(buffer), line, "CMD");
-            const ssize_t send_check = s_send(socketFD, buffer, strlen(buffer));
-            if (send_check == CHECK_SEND) {
-                printf("send failed, Connection closed\n");
-                break;
-            }
-        }
-        usleep(SLEEP);
-    }
-    free(line); //Free the memory allocated by getLine func
-}*/
 
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
@@ -576,6 +520,18 @@ void delete_flag_file() {
     execute_command(command);
 }
 
+/*
+ * delete_key_file: Cleanup function for key files
+ *
+ * Purpose: Removes key file at path stored in key_path
+ *
+ * Operation:
+ * 1. Checks if key_path is set
+ * 2. Constructs rm command
+ * 3. Executes command to delete file
+ *
+ * Returns: None
+ */
 void delete_key_file() {
     if (strlen(key_path) <= 0) {
         return;
@@ -682,8 +638,6 @@ int main(const int argc, char *argv[]) {
     startListeningAndPrintMessagesOnNewThread(socketFD);
     //initiate signal handler
     init_signal_handle();
-    //start reading console entries
-    //readConsoleEntriesAndSendToServer(socketFD);
     start_gui(socketFD);
     printf("exiting...\n");
     delete_flag_file();

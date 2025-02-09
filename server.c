@@ -53,9 +53,11 @@
 #define MAX_FD_FOR_SELECT 1
 #define PIPE_READ_BUF_SIZE 1
 #define FLAG_DATA_SIZE 32
-#define RANDOM_KEY_SIZE 9
+#define RANDOM_KEY_SIZE 8
 #define FLAG_COMMAND_SIZE 512
 #define FLAG_COMMAND_BUFFER_SIZE 2048
+#define KEY_COMMAND_BUFFER_SIZE 2048
+#define KEY_COMMAND_SIZE 1536
 #define MAX_FLAG_FILE_TRIES 5
 
 //data types
@@ -279,8 +281,34 @@ bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
 int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int clientSocketFD, bool *flag_okay_response,
                        bool *flag_request_dir, Game *game);
 
+/**
+ * Creates key file for client
+ * Args:
+ *   buffer: Directory path
+ *   clientSocketFD: Client's socket FD
+ *   game: Game instance pointer
+ * Operation:
+ *   - Generates random: key and encryption method for key file
+ *   - Creates key file and encrypts flag file
+ * Returns: Status code
+ */
 bool generate_client_key(const char *buffer, int clientSocketFD, Game *game);
 
+/**
+ * Processes client flag operations
+ * Args:
+ *   buffer: Message buffer
+ *   key_file_tries: Pointer to attempts counter
+ *   clientSocketFD: Client socket FD
+ *   key_okay_response: Flag status pointer
+ *   key_request_dir: Directory request status pointer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Validates key operations
+ *   - Handles key file creation
+ *   - Tracks attempts
+ * Returns: Operation status
+ */
 bool handle_client_key(const char *buffer, unsigned int *key_file_tries, int clientSocketFD,
                        bool *key_okay_response,
                        bool *key_request_dir, Game *game);
@@ -427,10 +455,8 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
             // Send max clients error message
-            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             s_send(clientSocketFD, GAME_MAX,
                    strlen(GAME_MAX));
-            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             close(clientSocketFD);
         }
         handle_closed_games();
@@ -880,9 +906,7 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
     if (game->acceptedSocketsCount < MAX_CLIENTS) {
         pthread_mutex_unlock(&game->game_mutex);
         //are there not 2 clients connected?
-        s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
         s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
-        s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
     } else {
         pthread_mutex_unlock(&game->game_mutex);
         if (check_winner(clientSocketFD, buffer, game)) {
@@ -893,17 +917,15 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
         if (check_message_received(buffer)) {
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD, game);
         } else {
-            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             s_send(clientSocketFD, INVALID_DATA,
                    strlen(INVALID_DATA));
-            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
         }
     }
     return false;
 }
 
 /**
- * Creates encrypted flag file for client
+ * Creates flag file for client
  * Args:
  *   buffer: Directory path
  *   clientSocketFD: Client's socket FD
@@ -986,6 +1008,21 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const 
     return true;
 }
 
+/**
+ * Processes client flag operations
+ * Args:
+ *   buffer: Message buffer
+ *   key_file_tries: Pointer to attempts counter
+ *   clientSocketFD: Client socket FD
+ *   key_okay_response: Flag status pointer
+ *   key_request_dir: Directory request status pointer
+ *   game: Game instance pointer
+ * Operation:
+ *   - Validates key operations
+ *   - Handles key file creation
+ *   - Tracks attempts
+ * Returns: Operation status
+ */
 bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const int clientSocketFD,
                        bool *key_okay_response,
                        bool *key_request_dir, Game *game) {
@@ -995,7 +1032,7 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
     if (!check_message_fields(buffer)) {
         return false;
     }
-    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "KEY", 3) != CMP_EQUAL) {
+    if (strncmp(strstr(buffer, "type:") + TYPE_OFFSET, "KEY", TYPE_LENGTH) != CMP_EQUAL) {
         return true;
     }
     if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "error") == CMP_EQUAL) {
@@ -1020,15 +1057,26 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
     return true;
 }
 
+/**
+ * Creates key file for client
+ * Args:
+ *   buffer: Directory path
+ *   clientSocketFD: Client's socket FD
+ *   game: Game instance pointer
+ * Operation:
+ *   - Generates random: key and encryption method for key file
+ *   - Creates key file and encrypts flag file
+ * Returns: Status code
+ */
 bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
-    char key_command[1536] = {NULL_CHAR};
-    char random_key[8] = {NULL_CHAR};
+    char key_command[KEY_COMMAND_SIZE] = {NULL_CHAR};
+    char random_key[RANDOM_KEY_SIZE] = {NULL_CHAR};
     const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3"};
     // Select a random encryption method
     const char *selected_method = encryption_methods[arc4random_uniform(
         sizeof(encryption_methods) / sizeof(encryption_methods[0]))];
     // Generate an 8-character random key
-    generate_random_string(random_key, 8 - NULL_CHAR_LEN);
+    generate_random_string(random_key, RANDOM_KEY_SIZE - NULL_CHAR_LEN);
     char *flag_path = NULL;
     pthread_mutex_lock(&game->game_mutex);
     for (int i = 0; i < game->acceptedSocketsCount; i++) {
@@ -1042,7 +1090,7 @@ bool generate_client_key(const char *buffer, const int clientSocketFD, Game *gam
                  "echo \"%s\\n%s\" > %s/key.txt && openssl enc -%s -e -pbkdf2 -in %s/flag.txt -out %s/flag.enc -k %s && mv %s/flag.enc %s/flag.txt",
                  random_key, selected_method, buffer, selected_method, flag_path, flag_path, random_key, flag_path,
                  flag_path) < sizeof(key_command)) {
-        char key_command_buffer[2048] = {NULL_CHAR};
+        char key_command_buffer[KEY_COMMAND_BUFFER_SIZE] = {NULL_CHAR};
         if (prepare_buffer(key_command_buffer, sizeof(key_command_buffer), key_command, "KEY")) {
             s_send(clientSocketFD, key_command_buffer, strlen(key_command_buffer));
             return true;
