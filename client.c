@@ -39,7 +39,6 @@
 #define SIGNAL_CODE 128
 
 //globals
-volatile int connectionClosed = 0;
 char my_cwd[MY_CWD_SIZE] = {NULL_CHAR};
 char command_cwd[COMMAND_CWD_SIZE] = {NULL_CHAR};
 pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -100,7 +99,7 @@ void *listenAndPrint(void *arg);
  *
  * Returns: None
  */
-void readConsoleEntriesAndSendToServer(int socketFD);
+//void readConsoleEntriesAndSendToServer(int socketFD);
 
 /*
  * Initializes the client socket, connects to the server,
@@ -250,7 +249,7 @@ void init_signal_handle();
  *
  * Returns: None
  */
-void readConsoleEntriesAndSendToServer(const int socketFD) {
+/*void readConsoleEntriesAndSendToServer(const int socketFD) {
     char *line = NULL;
     size_t lineSize = 0;
     // Main loop for reading and sending messages
@@ -282,7 +281,7 @@ void readConsoleEntriesAndSendToServer(const int socketFD) {
         usleep(SLEEP);
     }
     free(line); //Free the memory allocated by getLine func
-}
+}*/
 
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
@@ -510,9 +509,7 @@ void *listenAndPrint(void *arg) {
                 process_received_data(socketFD, data, type, length, &flag_requests, &key_requests);
             }
         } else {
-            // Handle connection closure
-            append_to_text_view("\nConnection closed, close window\n");
-            connectionClosed = true;
+            set_connection_status(true);
             break;
         }
     }
@@ -612,6 +609,7 @@ void termination_handler(const int signal) {
     delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
     close(socketFD);
+    cleanup_gui();
     exit(signal + SIGNAL_CODE);
 }
 
@@ -692,5 +690,6 @@ int main(const int argc, char *argv[]) {
     delete_key_file();
     pthread_mutex_destroy(&cwd_mutex);
     close(socketFD);
+    cleanup_gui();
     return EXIT_SUCCESS;
 }

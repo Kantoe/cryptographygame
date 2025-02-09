@@ -10,9 +10,13 @@ void start_gui(int socket_fd);
 
 void update_cwd_label(const char *new_cwd);
 
-void display_message(const char *message, int is_error);
+void display_message(const char *message);
 
 void append_to_text_view(const char *message);
+
+void cleanup_gui();
+
+void set_connection_status(bool is_closed);
 
 #ifdef __cplusplus
 }

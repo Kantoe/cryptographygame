@@ -427,8 +427,10 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             pthread_mutex_unlock(&globals_mutex);
             const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
             // Send max clients error message
+            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             s_send(clientSocketFD, GAME_MAX,
                    strlen(GAME_MAX));
+            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             close(clientSocketFD);
         }
         handle_closed_games();
@@ -878,7 +880,9 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
     if (game->acceptedSocketsCount < MAX_CLIENTS) {
         pthread_mutex_unlock(&game->game_mutex);
         //are there not 2 clients connected?
+        s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
         s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
+        s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
     } else {
         pthread_mutex_unlock(&game->game_mutex);
         if (check_winner(clientSocketFD, buffer, game)) {
@@ -889,8 +893,10 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
         if (check_message_received(buffer)) {
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD, game);
         } else {
+            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
             s_send(clientSocketFD, INVALID_DATA,
                    strlen(INVALID_DATA));
+            s_send(clientSocketFD, EMPTY_DATA, strlen(EMPTY_DATA));
         }
     }
     return false;
