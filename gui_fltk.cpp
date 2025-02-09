@@ -97,6 +97,7 @@ void update_cwd_label(const char *new_cwd) {
 
 void append_to_text_view(const char *message) {
     if (gui && gui->text_buffer) {
+        usleep(5000);
         gui->text_buffer->append(message);
         gui->text_display->redraw();
     }
@@ -161,6 +162,9 @@ static void command_input_callback(Fl_Widget *w, void *) {
 
 static void submit_callback(Fl_Widget *, void *) {
     handle_encryption_command();
+    gui->encryption_choice->value(0);
+    gui->key_input->value("");
+    gui->file_path_input->value("");
 }
 
 void cleanup_gui() {
