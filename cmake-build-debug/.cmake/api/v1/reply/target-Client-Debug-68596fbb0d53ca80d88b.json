@@ -16,7 +16,8 @@
 		],
 		"files" : 
 		[
-			"CMakeLists.txt"
+			"CMakeLists.txt",
+			"/home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -34,6 +35,15 @@
 				"file" : 0,
 				"line" : 35,
 				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 27,
+				"parent" : 3
 			},
 			{
 				"command" : 2,
@@ -55,7 +65,7 @@
 			"includes" : 
 			[
 				{
-					"backtrace" : 3,
+					"backtrace" : 5,
 					"path" : "/home/idokantor/CLionProjects/cryptography_game_util"
 				}
 			],
@@ -78,11 +88,11 @@
 	[
 		{
 			"backtrace" : 2,
-			"id" : "gui_fltk::@6890427a1f51a3e7e1df"
+			"id" : "cryptography_game_util::@27bcafd08510023a8fc6"
 		},
 		{
 			"backtrace" : 2,
-			"id" : "cryptography_game_util::@27bcafd08510023a8fc6"
+			"id" : "gui_fltk::@6890427a1f51a3e7e1df"
 		}
 	],
 	"id" : "Client::@6890427a1f51a3e7e1df",
@@ -165,6 +175,11 @@
 			{
 				"backtrace" : 2,
 				"fragment" : "/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libcrypto.so",
 				"role" : "libraries"
 			}
 		],

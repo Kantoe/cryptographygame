@@ -25,13 +25,19 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 19,
+				"line" : 29,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 21,
+				"line" : 32,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 27,
 				"parent" : 0
 			}
 		]
@@ -90,6 +96,11 @@
 			{
 				"backtrace" : 2,
 				"fragment" : "/home/idokantor/CLionProjects/cryptography_game_util/build/libcryptography_game_util.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "/usr/lib/x86_64-linux-gnu/libcrypto.so",
 				"role" : "libraries"
 			}
 		],

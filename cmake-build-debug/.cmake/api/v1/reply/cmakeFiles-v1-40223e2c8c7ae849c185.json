@@ -246,6 +246,36 @@
 		{
 			"isExternal" : true,
 			"path" : "/home/idokantor/CLionProjects/cryptography_game_util/CMakeLists.txt"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindOpenSSL.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPkgConfig.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "/opt/CLion/CLion-2024.2.1/clion-2024.2.1/bin/cmake/linux/x64/share/cmake-3.29/Modules/FindPackageMessage.cmake"
 		}
 	],
 	"kind" : "cmakeFiles",

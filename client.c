@@ -10,6 +10,7 @@
 #include "cryptography_game_util.h"
 #include "flag_file.h"
 #include "gui_fltk.h"
+#include "key_exchange.h"
 
 //defines
 #define CORRECT_ARGC 3
@@ -38,6 +39,11 @@
 #define SIGACTION_ERROR -1
 #define SIGNAL_CODE 128
 
+struct ThreadArgs {
+    int socketFD;
+    const unsigned char *encryption_key;
+};
+
 //globals
 char my_cwd[MY_CWD_SIZE] = {NULL_CHAR};
 char command_cwd[COMMAND_CWD_SIZE] = {NULL_CHAR};
@@ -47,6 +53,13 @@ char key_path[512] = {NULL_CHAR};
 int socketFD = -1;
 
 //prototypes
+
+void print_hex(const unsigned char *data, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        printf("%02x", data[i]);
+    }
+    printf("\n");
+}
 
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
@@ -62,7 +75,7 @@ int socketFD = -1;
  *
  * Returns: None
  */
-void startListeningAndPrintMessagesOnNewThread(int socketFD);
+void startListeningAndPrintMessagesOnNewThread(int socketFD, const unsigned char *encryption_key);
 
 /*
  * listenAndPrint: Server message processing thread
@@ -116,7 +129,8 @@ int initClientSocket(const char *ip, const char *port);
  *
  * Returns: None
  */
-void process_received_data(int socketFD, char data[1024], char type[1024], char length[1024], bool *flag_requests,
+void process_received_data(int socketFD, const unsigned char *encryption_key, char data[1024], char type[1024],
+                           char length[1024], bool *flag_requests,
                            bool *key_requests);
 
 /*
@@ -140,7 +154,8 @@ void process_received_data(int socketFD, char data[1024], char type[1024], char 
  *
  * Returns: None
  */
-void process_message_type(int socketFD, const char *current_data, const char *current_type, int n, bool *flag_requests,
+void process_message_type(int socketFD, const unsigned char *encryption_key, const char *current_data,
+                          const char *current_type, int n, bool *flag_requests,
                           bool *key_requests);
 
 /*
@@ -162,9 +177,9 @@ void process_message_type(int socketFD, const char *current_data, const char *cu
  * - true if flag operation should continue
  * - false if flag operation is complete
  */
-bool handle_flag_requests(int socketFD, const char *current_data, int n);
+bool handle_flag_requests(int socketFD, const unsigned char *encryption_key, const char *current_data, int n);
 
-bool handle_key_requests(int socketFD, const char *current_data, int n);
+bool handle_key_requests(int socketFD, const unsigned char *encryption_key, const char *current_data, int n);
 
 /*
  * delete_flag_file: Cleanup function for flag files
@@ -227,6 +242,8 @@ void termination_handler(int signal);
  */
 void init_signal_handle();
 
+void cleanup();
+
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
  *
@@ -241,10 +258,21 @@ void init_signal_handle();
  *
  * Returns: None
  */
-void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
+void startListeningAndPrintMessagesOnNewThread(const int socketFD, const unsigned char *encryption_key) {
+    struct ThreadArgs *clientThreadArgs = malloc(sizeof(struct ThreadArgs));
+    if (clientThreadArgs == NULL) {
+        cleanup();
+        exit(EXIT_FAILURE);
+    }
+    clientThreadArgs->socketFD = socketFD;
+    clientThreadArgs->encryption_key = encryption_key;
     pthread_t id;
     // Create new thread for message listening
-    pthread_create(&id, NULL, listenAndPrint, (void *) (intptr_t) socketFD);
+    if (pthread_create(&id, NULL, listenAndPrint, clientThreadArgs) != 0) {
+        cleanup();
+        free(clientThreadArgs);
+        exit(EXIT_FAILURE);
+    }
 }
 
 /*
@@ -266,17 +294,18 @@ void startListeningAndPrintMessagesOnNewThread(const int socketFD) {
  * - true if flag operation should continue
  * - false if flag operation is complete
  */
-bool handle_flag_requests(const int socketFD, const char *current_data, const int n) {
+bool handle_flag_requests(const int socketFD, const unsigned char *encryption_key, const char *current_data,
+                          const int n) {
     if (strncmp(current_data, "FLG_DIR", n) == CMP_EQUAL) {
         char path[256] = {NULL_CHAR};
         if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
             char buffer[512] = {NULL_CHAR};
             prepare_buffer(buffer, sizeof(buffer), path, "FLG");
-            s_send(socketFD, buffer, strlen(buffer));
+            s_send(socketFD, encryption_key, buffer, strlen(buffer));
             memset(flag_path, NULL_CHAR, sizeof(flag_path));
             strcpy(flag_path, path);
         } else {
-            s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+            s_send(socketFD, encryption_key, FLAG_ERROR, strlen(FLAG_ERROR));
         }
         return true;
     }
@@ -285,24 +314,25 @@ bool handle_flag_requests(const int socketFD, const char *current_data, const in
     strncpy(command, current_data, n);
     if (execute_command(command) == STATUS_OKAY) {
         strcat(flag_path, "/flag.txt");
-        s_send(socketFD, FLAG_OKAY, strlen(FLAG_OKAY));
+        s_send(socketFD, encryption_key,FLAG_OKAY, strlen(FLAG_OKAY));
         return false;
     }
-    s_send(socketFD, FLAG_ERROR, strlen(FLAG_ERROR));
+    s_send(socketFD, encryption_key,FLAG_ERROR, strlen(FLAG_ERROR));
     return true;
 }
 
-bool handle_key_requests(const int socketFD, const char *current_data, const int n) {
+bool handle_key_requests(const int socketFD, const unsigned char *encryption_key, const char *current_data,
+                         const int n) {
     if (strncmp(current_data, "KEY_DIR", n) == CMP_EQUAL) {
         char path[256] = {NULL_CHAR};
         if (generate_random_path_name(path, sizeof(path)) == STATUS_OKAY) {
             char buffer[512] = {NULL_CHAR};
             prepare_buffer(buffer, sizeof(buffer), path, "KEY");
-            s_send(socketFD, buffer, strlen(buffer));
+            s_send(socketFD, encryption_key, buffer, strlen(buffer));
             memset(key_path, NULL_CHAR, sizeof(key_path));
             strcpy(key_path, path);
         } else {
-            s_send(socketFD, KEY_ERROR, strlen(KEY_ERROR));
+            s_send(socketFD, encryption_key,KEY_ERROR, strlen(KEY_ERROR));
         }
         return true;
     }
@@ -311,10 +341,10 @@ bool handle_key_requests(const int socketFD, const char *current_data, const int
     strncpy(command, current_data, n);
     if (execute_command(command) == STATUS_OKAY) {
         strcat(key_path, "/key.txt");
-        s_send(socketFD, KEY_OKAY, strlen(KEY_OKAY));
+        s_send(socketFD, encryption_key,KEY_OKAY, strlen(KEY_OKAY));
         return false;
     }
-    s_send(socketFD, KEY_ERROR, strlen(KEY_ERROR));
+    s_send(socketFD, encryption_key,KEY_ERROR, strlen(KEY_ERROR));
     return true;
 }
 
@@ -339,7 +369,8 @@ bool handle_key_requests(const int socketFD, const char *current_data, const int
  *
  * Returns: None
  */
-void process_message_type(const int socketFD, const char *current_data, const char *current_type, const int n,
+void process_message_type(const int socketFD, const unsigned char *encryption_key, const char *current_data,
+                          const char *current_type, const int n,
                           bool *flag_requests, bool *key_requests) {
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         char temp[n + 1];
@@ -353,7 +384,7 @@ void process_message_type(const int socketFD, const char *current_data, const ch
             command[n] = NULL_CHAR;
         }
         pthread_mutex_lock(&cwd_mutex);
-        execute_command_and_send(command, n + NULL_CHAR_LEN, socketFD,
+        execute_command_and_send(command, n + NULL_CHAR_LEN, socketFD, encryption_key,
                                  command_cwd, sizeof(command_cwd));
         pthread_mutex_unlock(&cwd_mutex);
         free(command);
@@ -369,9 +400,9 @@ void process_message_type(const int socketFD, const char *current_data, const ch
         update_cwd_label(my_cwd);
         pthread_mutex_unlock(&cwd_mutex);
     } else if (strcmp(current_type, "FLG") == CMP_EQUAL && flag_requests) {
-        *flag_requests = handle_flag_requests(socketFD, current_data, n);
+        *flag_requests = handle_flag_requests(socketFD, encryption_key, current_data, n);
     } else if (strcmp(current_type, "KEY") == CMP_EQUAL && key_requests) {
-        *key_requests = handle_key_requests(socketFD, current_data, n);
+        *key_requests = handle_key_requests(socketFD, encryption_key, current_data, n);
     }
 }
 
@@ -395,7 +426,8 @@ void process_message_type(const int socketFD, const char *current_data, const ch
  *
  * Returns: None
  */
-void process_received_data(const int socketFD, char data[1024], char type[1024], char length[1024],
+void process_received_data(const int socketFD, const unsigned char *encryption_key, char data[1024], char type[1024],
+                           char length[1024],
                            bool *flag_requests, bool *key_requests) {
     const char *current_data = data;
     char *type_context, *length_context;
@@ -406,7 +438,7 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
     while (current_length != NULL && current_type != NULL) {
         const int n = atoi(current_length);
         // Handle different message types (OUT, CMD, ERR)
-        process_message_type(socketFD, current_data, current_type, n, flag_requests, key_requests);
+        process_message_type(socketFD, encryption_key, current_data, current_type, n, flag_requests, key_requests);
         // Move to next message segment
         current_data += n;
         current_type = strtok_r(NULL, ";", &type_context);
@@ -433,13 +465,16 @@ void process_received_data(const int socketFD, char data[1024], char type[1024],
  */
 void *listenAndPrint(void *arg) {
     pthread_detach(pthread_self());
-    const int socketFD = (intptr_t) arg;
+    const int socketFD = ((struct ThreadArgs *) arg)->socketFD;
+    const unsigned char *encryption_key = ((struct ThreadArgs *) arg)->encryption_key;
+    free(arg);
+    print_hex(encryption_key, 32);
     bool flag_requests = true;
     bool key_requests = true;
     // Continuous listening loop for server messages
     while (true) {
         char buffer[BUFFER_SIZE] = {0};
-        const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer));
+        const ssize_t amountReceived = s_recv(socketFD, buffer, sizeof(buffer), encryption_key);
         // Initialize buffers for message parsing
         char data[2048] = {NULL_CHAR};
         char type[1024] = {NULL_CHAR};
@@ -450,7 +485,7 @@ void *listenAndPrint(void *arg) {
             // Parse and process the received packet
             if (parse_received_packets(buffer, data, type, length, strlen(buffer), sizeof(length), sizeof(data),
                                        sizeof(type))) {
-                process_received_data(socketFD, data, type, length, &flag_requests, &key_requests);
+                process_received_data(socketFD, encryption_key, data, type, length, &flag_requests, &key_requests);
             }
         } else {
             set_connection_status(true);
@@ -541,6 +576,15 @@ void delete_key_file() {
     execute_command(command);
 }
 
+void cleanup() {
+    printf("exiting...\n");
+    delete_flag_file();
+    delete_key_file();
+    pthread_mutex_destroy(&cwd_mutex);
+    close(socketFD);
+    cleanup_gui();
+}
+
 /*
  * termination_handler: Signal handler for graceful shutdown
  *
@@ -560,12 +604,7 @@ void delete_key_file() {
  */
 void termination_handler(const int signal) {
     printf("\nCaught signal %d (%s)\n", signal, strsignal(signal));
-    printf("exiting...\n");
-    delete_flag_file();
-    delete_key_file();
-    pthread_mutex_destroy(&cwd_mutex);
-    close(socketFD);
-    cleanup_gui();
+    cleanup();
     exit(signal + SIGNAL_CODE);
 }
 
@@ -631,19 +670,16 @@ int main(const int argc, char *argv[]) {
     if (socketFD == EXIT_FAILURE) {
         return EXIT_FAILURE;
     }
+    size_t key_size;
+    const unsigned char *key = send_recv_key(socketFD, &key_size);
     strcpy(my_cwd, "/home");
     strcpy(command_cwd, "/home");
     update_cwd_label(my_cwd);
     // Start message listening thread and handle user input
-    startListeningAndPrintMessagesOnNewThread(socketFD);
+    startListeningAndPrintMessagesOnNewThread(socketFD, key);
     //initiate signal handler
     init_signal_handle();
-    start_gui(socketFD);
-    printf("exiting...\n");
-    delete_flag_file();
-    delete_key_file();
-    pthread_mutex_destroy(&cwd_mutex);
-    close(socketFD);
-    cleanup_gui();
+    start_gui(socketFD, key);
+    cleanup();
     return EXIT_SUCCESS;
 }

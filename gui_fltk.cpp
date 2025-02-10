@@ -13,6 +13,49 @@ extern "C" {
 #include "cryptography_game_util.h"
 }
 
+#define SLEEP 5000
+#define SECONDS 0
+#define MAX_COMMAND_LENGTH 250
+#define COMMAND_BUFFER_SIZE 512
+#define COMMAND_MESSAGE_SIZE 1024
+#define MAX_OPENSSL_LENGTH 225
+#define FIRST_ENC_LIST_INDEX 0
+#define MESSAGE_WINDOW_ARGS 300, 100, "Message"
+#define MESSAGE_WINDOW_BOX_ARGS 10, 10, 280, 40
+#define MESSAGE_WINDOW_BUTTON_ARGS 110, 60, 80, 30, "OK"
+#define WIN_WIDTH_ALIGNMENT
+#define TEXT_DISPLAY_DIMS(margin, win_w, h) margin, margin, win_w - 2 * margin, h
+#define TEXT_SIZE 14
+#define CWD_LABEL_DIMS(margin, win_w, y)  margin, y, win_w - 2 * margin, 20
+#define CMD_LABEL_DIMS(margin, y, width)  margin, y, width, 20
+#define CMD_INPUT_DIMS(margin, y, width)  margin, y + 25, width, 30
+#define ENC_LABEL_DIMS(x, y, width)  x, y - 25, width, 20
+#define ENC_CHOICE_DIMS(x, y, width)  x, y, width, 30
+#define KEY_LABEL_DIMS(x, y, width)  x + width + 10, y - 25, width, 20
+#define KEY_INPUT_DIMS(x, y, width)  x + width + 10, y, width, 30
+#define PATH_LABEL_DIMS(x, y, width)  x + 2 * (width + 10), y - 25, width, 20
+#define PATH_INPUT_DIMS(x, y, width)  x + 2 * (width + 10), y, width, 30
+#define ENCRYPTION_SECTION_MARGIN_MULTIPLIER 3
+#define ENCRYPTION_SECTION_WIDTH_PCT 35
+#define ENCRYPTION_CONTROL_GAP 20
+#define ENCRYPTION_CONTROL_COUNT 3
+#define ENCRYPTION_BTN_WIDTH 100
+#define ENCRYPTION_BTN_HEIGHT 30
+#define ENCRYPTION_BTN_Y_OFFSET 40
+#define ENCRYPTION_PCT_DIVISOR 100
+#define WINDOW_SIZE_PCT 80
+#define MARGIN_SIZE 20
+#define COMMAND_SECTION_WIDTH_PCT 60
+#define TEXT_DISPLAY_HEIGHT_MULTIPLIER 4
+#define TEXT_DISPLAY_MARGIN_MULTIPLIER 5
+#define TEXT_DISPLAY_OFFSET 20
+#define COMMAND_MARGIN_MULTIPLIER 3
+#define Y_POS_MARGIN_MULTIPLIER 2
+#define Y_POS_INCREMENT_A 20
+#define Y_POS_INCREMENT_B 10
+#define ELEMENT_HEIGHT 30
+
+
 /**
  * Modal window for displaying messages to the user
  * Components:
@@ -30,10 +73,10 @@ struct MessageWindow {
     Fl_Button *btn;
 
     explicit MessageWindow(const char *message) {
-        win = new Fl_Window(300, 100, "Message");
-        box = new Fl_Box(10, 10, 280, 40, message);
+        win = new Fl_Window(MESSAGE_WINDOW_ARGS);
+        box = new Fl_Box(MESSAGE_WINDOW_BOX_ARGS, message);
         box->align(FL_ALIGN_CENTER | FL_ALIGN_INSIDE);
-        btn = new Fl_Button(110, 60, 80, 30, "OK");
+        btn = new Fl_Button(MESSAGE_WINDOW_BUTTON_ARGS);
         btn->callback(close_cb, this);
         win->end();
         win->set_modal();
@@ -49,7 +92,7 @@ struct MessageWindow {
     static void close_cb(Fl_Widget *, void *data) {
         auto *msgWin = static_cast<MessageWindow *>(data);
         msgWin->win->hide();
-        Fl::repeat_timeout(0, delete_cb, msgWin); // Safe delayed delete
+        Fl::repeat_timeout(SECONDS, delete_cb, msgWin); // Safe delayed delete
     }
 
     static void delete_cb(void *data) {
@@ -106,6 +149,7 @@ typedef struct {
     Fl_Box *cwd_label;
     Fl_Button *submit_button;
     int socket_fd;
+    const unsigned char *encryption_key;
     Fl_Box *cmd_label;
     Fl_Box *enc_label;
     Fl_Box *key_label;
@@ -153,7 +197,7 @@ void set_connection_status(const bool is_closed) {
  */
 void update_cwd_label(const char *new_cwd) {
     if (gui && gui->cwd_label) {
-        gui->cwd_label->label(new_cwd);
+        gui->cwd_label->copy_label(new_cwd);
         gui->window->redraw();
     }
 }
@@ -169,7 +213,7 @@ void update_cwd_label(const char *new_cwd) {
  */
 void append_to_text_view(const char *message) {
     if (gui && gui->text_buffer) {
-        usleep(5000);
+        usleep(SLEEP);
         gui->text_buffer->append(message);
         gui->text_display->redraw();
     }
@@ -201,7 +245,7 @@ void delete_win_cb(void *data) {
 void close_cb(Fl_Widget *, void *data) {
     auto *win = static_cast<Fl_Window *>(data);
     win->hide();
-    Fl::add_timeout(0, delete_win_cb, win); // Schedule safe deletion
+    Fl::add_timeout(SECONDS, delete_win_cb, win); // Schedule safe deletion
 }
 
 /**
@@ -220,14 +264,14 @@ static void handle_regular_command(const char *command) {
         display_message("Connection closed, close window");
         return;
     }
-    if (strlen(command) == 0 || strlen(command) > 250) {
+    if (strlen(command) == 0 || strlen(command) > MAX_COMMAND_LENGTH) {
         display_message("Unsupported command");
         return;
     }
-    char buffer[512];
+    char buffer[COMMAND_BUFFER_SIZE];
     prepare_buffer(buffer, sizeof(buffer), command, "CMD");
-    s_send(gui->socket_fd, buffer, strlen(buffer));
-    char message[1024];
+    s_send(gui->socket_fd, gui->encryption_key, buffer, strlen(buffer));
+    char message[COMMAND_MESSAGE_SIZE];
     snprintf(message, sizeof(message), ":$> %s\n", command);
     append_to_text_view(message);
 }
@@ -250,17 +294,17 @@ static void handle_encryption_command() {
     const char *encryption_method = gui->encryption_choice->text();
     const char *key = gui->key_input->value();
     const char *path = gui->file_path_input->value();
-    if (strcmp(encryption_method, "None") == 0 || strlen(key) == 0 || strlen(path) == 0 ||
-        strlen(key) + strlen(path) > 225) {
+    if (strcmp(encryption_method, "None") == CMP_EQUAL || strlen(key) == 0 || strlen(path) == 0 ||
+        strlen(key) + strlen(path) > MAX_OPENSSL_LENGTH) {
         display_message("Unsupported command");
         return;
     }
-    char command[512];
+    char command[COMMAND_BUFFER_SIZE];
     snprintf(command, sizeof(command), "openssl enc -d -%s -in %s -out %s.dec -k %s -pbkdf2 && mv %s.dec %s",
              encryption_method, path, path, key, path, path);
-    char buffer[1024];
+    char buffer[COMMAND_MESSAGE_SIZE];
     prepare_buffer(buffer, sizeof(buffer), command, "CMD");
-    s_send(gui->socket_fd, buffer, strlen(buffer));
+    s_send(gui->socket_fd, gui->encryption_key, buffer, strlen(buffer));
 }
 
 /**
@@ -293,7 +337,7 @@ static void command_input_callback(Fl_Widget *w, void *) {
  */
 static void submit_callback(Fl_Widget *, void *) {
     handle_encryption_command();
-    gui->encryption_choice->value(0);
+    gui->encryption_choice->value(FIRST_ENC_LIST_INDEX);
     gui->key_input->value("");
     gui->file_path_input->value("");
 }
@@ -339,13 +383,11 @@ void cleanup_gui() {
  *   text_display_h: Height of text display area
  */
 void initialize_text_display(GuiComponents *gui, const int margin, const int win_w, const int text_display_h) {
-    gui->text_display = new Fl_Text_Display(margin, margin,
-                                            win_w - 2 * margin,
-                                            text_display_h);
+    gui->text_display = new Fl_Text_Display(TEXT_DISPLAY_DIMS(margin, win_w, text_display_h));
     gui->text_buffer = new Fl_Text_Buffer();
     gui->text_display->buffer(gui->text_buffer);
     gui->text_display->textfont(FL_COURIER);
-    gui->text_display->textsize(14);
+    gui->text_display->textsize(TEXT_SIZE);
 }
 
 /**
@@ -357,7 +399,7 @@ void initialize_text_display(GuiComponents *gui, const int margin, const int win
  *   y_pos: Vertical position for section
  */
 void initialize_cwd_section(GuiComponents *gui, const int margin, const int win_w, const int y_pos) {
-    gui->cwd_label = new Fl_Box(margin, y_pos, win_w - 2 * margin, 20, "/home");
+    gui->cwd_label = new Fl_Box(CWD_LABEL_DIMS(margin, win_w, y_pos), "/home");
     gui->cwd_label->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
 }
 
@@ -371,10 +413,9 @@ void initialize_cwd_section(GuiComponents *gui, const int margin, const int win_
  *   command_width: Width of command section
  */
 void initialize_command_section(GuiComponents *gui, const int margin, const int y_pos, const int command_width) {
-    gui->cmd_label = new Fl_Box(margin, y_pos, command_width, 20, "Command Input:");
+    gui->cmd_label = new Fl_Box(CMD_LABEL_DIMS(margin, y_pos, command_width), "Command Input:");
     gui->cmd_label->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-
-    gui->command_input = new Fl_Input(margin, y_pos + 25, command_width, 30);
+    gui->command_input = new Fl_Input(CMD_INPUT_DIMS(margin, y_pos, command_width));
     gui->command_input->callback(command_input_callback);
     gui->command_input->when(FL_WHEN_ENTER_KEY);
 }
@@ -389,30 +430,19 @@ void initialize_command_section(GuiComponents *gui, const int margin, const int 
  *   spacing: Space between controls
  */
 void create_encryption_controls(GuiComponents *gui, const int encryption_x, const int y_pos, const int control_width) {
-    gui->enc_label = new Fl_Box(encryption_x, y_pos - 25,
-                                control_width, 20, "Decryption:");
+    gui->enc_label = new Fl_Box(ENC_LABEL_DIMS(encryption_x, y_pos, control_width), "Decryption:");
     gui->enc_label->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-
-    gui->encryption_choice = new Fl_Choice(encryption_x, y_pos,
-                                           control_width, 30);
+    gui->encryption_choice = new Fl_Choice(ENC_CHOICE_DIMS(encryption_x, y_pos, control_width));
     for (int i = 0; encryption_methods[i] != nullptr; i++) {
         gui->encryption_choice->add(encryption_methods[i]);
     }
-    gui->encryption_choice->value(0);
-
-    gui->key_label = new Fl_Box(encryption_x + control_width + 10,
-                                y_pos - 25, control_width, 20, "Key:");
+    gui->encryption_choice->value(FIRST_ENC_LIST_INDEX);
+    gui->key_label = new Fl_Box(KEY_LABEL_DIMS(encryption_x, y_pos, control_width), "Key:");
     gui->key_label->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-
-    gui->key_input = new Fl_Input(encryption_x + control_width + 10,
-                                  y_pos, control_width, 30);
-
-    gui->path_label = new Fl_Box(encryption_x + 2 * (control_width + 10),
-                                 y_pos - 25, control_width, 20, "Path:");
+    gui->key_input = new Fl_Input(KEY_INPUT_DIMS(encryption_x, y_pos, control_width));
+    gui->path_label = new Fl_Box(PATH_LABEL_DIMS(encryption_x, y_pos, control_width), "Path:");
     gui->path_label->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-
-    gui->file_path_input = new Fl_Input(encryption_x + 2 * (control_width + 10),
-                                        y_pos, control_width, 30);
+    gui->file_path_input = new Fl_Input(PATH_INPUT_DIMS(encryption_x, y_pos, control_width));
 }
 
 /**
@@ -427,13 +457,15 @@ void create_encryption_controls(GuiComponents *gui, const int encryption_x, cons
 void initialize_encryption_section(GuiComponents *gui, const int margin, const int win_w, const int y_pos,
                                    const int command_width) {
     const int encryption_x = margin + command_width + margin;
-    const int encryption_width = ((win_w - 3 * margin) * 35) / 100;
-    const int control_width = (encryption_width - 20) / 3;
-
+    const int encryption_width = (win_w - ENCRYPTION_SECTION_MARGIN_MULTIPLIER * margin) * ENCRYPTION_SECTION_WIDTH_PCT
+                                 / ENCRYPTION_PCT_DIVISOR;
+    const int control_width = (encryption_width - ENCRYPTION_CONTROL_GAP) / ENCRYPTION_CONTROL_COUNT;
     create_encryption_controls(gui, encryption_x, y_pos, control_width);
-
-    gui->submit_button = new Fl_Button(encryption_x + encryption_width - 100,
-                                       y_pos + 40, 100, 30, "Decrypt");
+    gui->submit_button = new Fl_Button(encryption_x + encryption_width - ENCRYPTION_BTN_WIDTH,
+                                       y_pos + ENCRYPTION_BTN_Y_OFFSET,
+                                       ENCRYPTION_BTN_WIDTH,
+                                       ENCRYPTION_BTN_HEIGHT,
+                                       "Decrypt");
     gui->submit_button->callback(submit_callback);
 }
 
@@ -442,32 +474,29 @@ void initialize_encryption_section(GuiComponents *gui, const int margin, const i
  * Args:
  *   socket_fd: Socket for server communication
  */
-void start_gui(const int socket_fd) {
+void start_gui(const int socket_fd, const unsigned char *encryption_key) {
     cleanup_gui();
-
     const int screen_w = Fl::w();
     const int screen_h = Fl::h();
-    const int win_w = (screen_w * 80) / 100;
-    const int win_h = (screen_h * 80) / 100;
-
+    const int win_w = screen_w * WINDOW_SIZE_PCT / ENCRYPTION_PCT_DIVISOR;
+    const int win_h = screen_h * WINDOW_SIZE_PCT / ENCRYPTION_PCT_DIVISOR;
     gui = new GuiComponents;
     memset(gui, 0, sizeof(GuiComponents));
     gui->socket_fd = socket_fd;
+    gui->encryption_key = encryption_key;
     gui->window = new Fl_Window(win_w, win_h, "Cryptography Game Client");
-
-    constexpr int margin = 20;
-    const int text_display_h = win_h - (4 * 30 + 5 * margin + 2 * 20);
-    const int command_width = ((win_w - 3 * margin) * 60) / 100;
-
+    constexpr int margin = MARGIN_SIZE;
+    const int text_display_h = win_h - (TEXT_DISPLAY_HEIGHT_MULTIPLIER * ELEMENT_HEIGHT +
+                                        TEXT_DISPLAY_MARGIN_MULTIPLIER * margin +
+                                        TEXT_DISPLAY_OFFSET);
+    const int command_width = ((win_w - COMMAND_MARGIN_MULTIPLIER * margin) *
+                               COMMAND_SECTION_WIDTH_PCT) / ENCRYPTION_PCT_DIVISOR;
     initialize_text_display(gui, margin, win_w, text_display_h);
-
-    int y_pos = text_display_h + 2 * margin;
+    int y_pos = text_display_h + Y_POS_MARGIN_MULTIPLIER * margin;
     initialize_cwd_section(gui, margin, win_w, y_pos);
-
-    y_pos += 20 + 10;
+    y_pos += Y_POS_INCREMENT_A + Y_POS_INCREMENT_B;
     initialize_command_section(gui, margin, y_pos, command_width);
     initialize_encryption_section(gui, margin, win_w, y_pos, command_width);
-
     gui->window->resizable(gui->text_display);
     gui->window->end();
     gui->window->show();

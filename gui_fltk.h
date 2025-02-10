@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-void start_gui(int socket_fd);
+void start_gui(int socket_fd, const unsigned char *encryption_key);
 
 void update_cwd_label(const char *new_cwd);
 

@@ -9,10 +9,9 @@
 #include <pthread.h>
 #include <signal.h>
 #include <fcntl.h>
-
 #include "cryptography_game_util.h"
 #include "flag_file.h"
-
+#include <openssl/crypto.h>
 //defines
 #define CORRECT_ARGC 2
 #define SERVER_IP "0.0.0.0"
@@ -59,6 +58,8 @@
 #define KEY_COMMAND_BUFFER_SIZE 2048
 #define KEY_COMMAND_SIZE 1536
 #define MAX_FLAG_FILE_TRIES 5
+#define ENCRYPTION_METHOD_SIZE 16
+#define FIRST_ENC_INDEX 0
 
 //data types
 struct AcceptedSocket {
@@ -68,6 +69,7 @@ struct AcceptedSocket {
     int acceptedSuccessfully;
     char flag_data[FLAG_DATA_SIZE];
     char flag_dir[512];
+    unsigned char *encryption_key;
 };
 
 typedef struct {
@@ -81,6 +83,7 @@ typedef struct {
 struct ThreadArgs {
     Game *game;
     int socketFD;
+    unsigned char *encryption_key;
 };
 
 //globals
@@ -224,7 +227,8 @@ int bind_and_listen_on_socket(int serverSocketFD, struct sockaddr_in server_addr
  *   - Routes valid messages
  * Returns: Boolean indicating if game should end
  */
-int generate_message_for_clients(int clientSocketFD, char buffer[4096], Game *game);
+int generate_message_for_clients(int clientSocketFD, const unsigned char *encryption_key, char buffer[4096],
+                                 Game *game);
 
 /**
  * Validates message field format
@@ -248,7 +252,7 @@ int check_message_fields(const char *buffer);
  *   - Creates and encrypts flag file
  * Returns: Status code
  */
-int generate_client_flag(const char *buffer, int clientSocketFD, Game *game);
+int generate_client_flag(const char *buffer, int clientSocketFD, const unsigned char *encryption_key, Game *game);
 
 /**
  * Checks game winning condition
@@ -278,7 +282,8 @@ bool check_winner(int clientSocketFD, char buffer[4096], Game *game);
  *   - Tracks attempts
  * Returns: Operation status
  */
-int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int clientSocketFD, bool *flag_okay_response,
+int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int clientSocketFD,
+                       const unsigned char *encryption_key,bool *flag_okay_response,
                        bool *flag_request_dir, Game *game);
 
 /**
@@ -292,7 +297,7 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, int cl
  *   - Creates key file and encrypts flag file
  * Returns: Status code
  */
-bool generate_client_key(const char *buffer, int clientSocketFD, Game *game);
+bool generate_client_key(const char *buffer, int clientSocketFD, const unsigned char *encryption_key, Game *game);
 
 /**
  * Processes client flag operations
@@ -310,6 +315,7 @@ bool generate_client_key(const char *buffer, int clientSocketFD, Game *game);
  * Returns: Operation status
  */
 bool handle_client_key(const char *buffer, unsigned int *key_file_tries, int clientSocketFD,
+                       const unsigned char *encryption_key,
                        bool *key_okay_response,
                        bool *key_request_dir, Game *game);
 
@@ -401,7 +407,8 @@ void thread_exit(int clientSocketFD, Game *game);
  * Returns:
  *   Boolean indicating if client handling should terminate
  */
-bool handle_client_messages(int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
+bool handle_client_messages(int clientSocketFD, const unsigned char *encryption_key, Game *game,
+                            unsigned int *flag_file_tries, bool *flag_request_dir,
                             bool *flag_okay_response, unsigned int *key_file_tries, bool *key_request_dir,
                             bool *key_okay_response);
 
@@ -425,6 +432,23 @@ void wait_for_all_threads_to_finish();
  */
 void handle_closed_games();
 
+void reject_client(int serverSocketFD);
+
+void reject_client(const int serverSocketFD) {
+    // Server at capacity, reject new connection
+    pthread_mutex_unlock(&globals_mutex);
+    const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
+    size_t key_len; // Only used during initialization
+    const unsigned char *encryption_key = recv_send_key(clientSocketFD, &key_len);
+    if (encryption_key == NULL) {
+        close(clientSocketFD);
+    }
+    // Send max clients error message
+    s_send(clientSocketFD, encryption_key, GAME_MAX,
+           strlen(GAME_MAX));
+    close(clientSocketFD);
+}
+
 /**
  * Main server accept loop for incoming connections
  * Args:
@@ -444,20 +468,12 @@ void startAcceptingIncomingConnections(const int serverSocketFD) {
             pthread_mutex_unlock(&globals_mutex);
             struct AcceptedSocket clientSocket =
                     acceptIncomingConnection(serverSocketFD);
-
             // If connection accepted successfully, add to active clients
             if (clientSocket.acceptedSuccessfully) {
-                // Lock mutex before updating shared data
                 handle_single_client_on_separate_thread(&clientSocket);
             }
         } else {
-            // Server at capacity, reject new connection
-            pthread_mutex_unlock(&globals_mutex);
-            const int clientSocketFD = accept(serverSocketFD, NULL, NULL);
-            // Send max clients error message
-            s_send(clientSocketFD, GAME_MAX,
-                   strlen(GAME_MAX));
-            close(clientSocketFD);
+            reject_client(serverSocketFD);
         }
         handle_closed_games();
         // Sleep to prevent CPU overload
@@ -594,6 +610,7 @@ void create_thread_args_and_thread(const struct AcceptedSocket *clientSocketFD, 
                                  : inactive_game_index != GAME_NOT_FOUND
                                        ? games[inactive_game_index]
                                        : NULL;
+    clientThreadArgs->encryption_key = clientSocketFD->encryption_key;
     if (clientThreadArgs->game == NULL) {
         perror("No valid game found for the client");
         free(clientThreadArgs);
@@ -645,6 +662,7 @@ void *handle_single_client(void *arg) {
     pthread_mutex_unlock(&globals_mutex);
     const int clientSocketFD = ((struct ThreadArgs *) arg)->socketFD;
     Game *game = ((struct ThreadArgs *) arg)->game;
+    const unsigned char *encryption_key = ((struct ThreadArgs *) arg)->encryption_key;
     free(arg);
     unsigned int flag_file_tries = 0;
     bool flag_request_dir = 0;
@@ -653,7 +671,7 @@ void *handle_single_client(void *arg) {
     bool key_request_dir = 0;
     bool key_okay_response = 0;
     const int max_fd = clientSocketFD > game->stop_pipe[PIPE_READ] ? clientSocketFD : game->stop_pipe[PIPE_READ];
-    s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+    s_send(clientSocketFD, encryption_key,DIR_REQUEST, strlen(DIR_REQUEST));
     while (!stop_all_games && !game->stop_game) {
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -673,8 +691,8 @@ void *handle_single_client(void *arg) {
             break;
         }
         if (FD_ISSET(clientSocketFD, &readfds)) {
-            if (handle_client_messages(clientSocketFD, game, &flag_file_tries, &flag_request_dir, &flag_okay_response,
-                                       &key_file_tries, &key_request_dir, &key_okay_response))
+            if (handle_client_messages(clientSocketFD, encryption_key, game, &flag_file_tries, &flag_request_dir,
+                                       &flag_okay_response, &key_file_tries, &key_request_dir, &key_okay_response))
                 break;
         }
     }
@@ -730,30 +748,32 @@ void thread_exit(const int clientSocketFD, Game *game) {
  * Returns:
  *   Boolean indicating if client handling should terminate
  */
-bool handle_client_messages(const int clientSocketFD, Game *game, unsigned int *flag_file_tries, bool *flag_request_dir,
+bool handle_client_messages(const int clientSocketFD, const unsigned char *encryption_key, Game *game,
+                            unsigned int *flag_file_tries, bool *flag_request_dir,
                             bool *flag_okay_response, unsigned int *key_file_tries, bool *key_request_dir,
                             bool *key_okay_response) {
     // Initialize buffer for incoming message
     char buffer[BUFFER_SIZE] = {NULL_CHAR};
     // Receive data from client
-    const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer));
+    const ssize_t amountReceived = s_recv(clientSocketFD, buffer, sizeof(buffer), encryption_key);
     if (amountReceived > CHECK_RECEIVE) {
         // Null terminate received message
         buffer[amountReceived] = NULL_CHAR;
         // Log received message
         printf("%s\n", buffer);
         if (!(*flag_okay_response && *flag_request_dir)) {
-            if (!handle_client_flag(buffer, flag_file_tries, clientSocketFD, flag_okay_response,
+            if (!handle_client_flag(buffer, flag_file_tries, clientSocketFD, encryption_key, flag_okay_response,
                                     flag_request_dir, game)) {
                 return true;
             }
         } else if (!(*key_okay_response && *key_request_dir)) {
-            if (!handle_client_key(buffer, key_file_tries, clientSocketFD, key_okay_response, key_request_dir, game)) {
+            if (!handle_client_key(buffer, key_file_tries, clientSocketFD, encryption_key, key_okay_response,
+                                   key_request_dir, game)) {
                 return true;
             }
         } else {
             //deal with client message and make an ideal response
-            game->stop_game = generate_message_for_clients(clientSocketFD, buffer, game);
+            game->stop_game = generate_message_for_clients(clientSocketFD, encryption_key, buffer, game);
         }
     }
     // Exit if connection closed or server stopping
@@ -782,7 +802,8 @@ void sendReceivedMessageToTheOtherClients(const char *buffer, const int socketFD
         // Skip sender's socket
         if (game->game_clients[i].acceptedSocketFD != socketFD) {
             // Forward message to other client
-            s_send(game->game_clients[i].acceptedSocketFD, buffer, strlen(buffer));
+            s_send(game->game_clients[i].acceptedSocketFD, game->game_clients[i].encryption_key, buffer,
+                   strlen(buffer));
         }
     }
 
@@ -804,11 +825,9 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     struct AcceptedSocket acceptedSocket = {NULL_CHAR};
     struct sockaddr_in clientAddress;
     int clientAddressSize = sizeof(struct sockaddr_in);
-
     // Accept new connection
     const int clientSocketFD = accept(serverSocketFD, (struct sockaddr *) &clientAddress,
                                       (socklen_t *) &clientAddressSize);
-
     // Set socket information
     acceptedSocket.address = clientAddress;
     acceptedSocket.acceptedSocketFD = clientSocketFD;
@@ -816,6 +835,14 @@ struct AcceptedSocket acceptIncomingConnection(const int serverSocketFD) {
     acceptedSocket.error = clientSocketFD < ACCEPTED_SUCCESSFULLY ? clientSocketFD : ACCEPTED_SUCCESSFULLY;
     memset(acceptedSocket.flag_data, NULL_CHAR, sizeof(acceptedSocket.flag_data));
     memset(acceptedSocket.flag_dir, NULL_CHAR, sizeof(acceptedSocket.flag_dir));
+    if (acceptedSocket.acceptedSuccessfully) {
+        size_t key_len; // Only used during initialization
+        acceptedSocket.encryption_key = recv_send_key(acceptedSocket.acceptedSocketFD, &key_len);
+        if (acceptedSocket.encryption_key == NULL) {
+            acceptedSocket.acceptedSuccessfully = false;
+            close(acceptedSocket.acceptedSocketFD);
+        }
+    }
     return acceptedSocket;
 }
 
@@ -901,23 +928,24 @@ bool check_winner(const int clientSocketFD, char buffer[4096], Game *game) {
  *   - Routes valid messages
  * Returns: Boolean indicating if game should end
  */
-int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Game *game) {
+int generate_message_for_clients(const int clientSocketFD, const unsigned char *encryption_key, char buffer[4096],
+                                 Game *game) {
     pthread_mutex_lock(&game->game_mutex);
     if (game->acceptedSocketsCount < MAX_CLIENTS) {
         pthread_mutex_unlock(&game->game_mutex);
         //are there not 2 clients connected?
-        s_send(clientSocketFD, WAIT_CLIENT, strlen(WAIT_CLIENT));
+        s_send(clientSocketFD, encryption_key,WAIT_CLIENT, strlen(WAIT_CLIENT));
     } else {
         pthread_mutex_unlock(&game->game_mutex);
         if (check_winner(clientSocketFD, buffer, game)) {
-            s_send(clientSocketFD, WIN_MSG, strlen(WIN_MSG));
+            s_send(clientSocketFD, encryption_key,WIN_MSG, strlen(WIN_MSG));
             sendReceivedMessageToTheOtherClients(LOSE_MSG, clientSocketFD, game);
             return true;
         }
         if (check_message_received(buffer)) {
             sendReceivedMessageToTheOtherClients(buffer, clientSocketFD, game);
         } else {
-            s_send(clientSocketFD, INVALID_DATA,
+            s_send(clientSocketFD, encryption_key,INVALID_DATA,
                    strlen(INVALID_DATA));
         }
     }
@@ -935,7 +963,8 @@ int generate_message_for_clients(const int clientSocketFD, char buffer[4096], Ga
  *   - Creates flag file
  * Returns: Status code
  */
-int generate_client_flag(const char *buffer, const int clientSocketFD, Game *game) {
+int generate_client_flag(const char *buffer, const int clientSocketFD, const unsigned char *encryption_key,
+                         Game *game) {
     char flag_command[FLAG_COMMAND_SIZE] = {NULL_CHAR};
     char random_str[FLAG_DATA_SIZE] = {NULL_CHAR};
     generate_random_string(random_str, FLAG_DATA_SIZE - NULL_CHAR_LEN);
@@ -944,7 +973,7 @@ int generate_client_flag(const char *buffer, const int clientSocketFD, Game *gam
                  random_str, buffer) < sizeof(flag_command)) {
         char flag_command_buffer[FLAG_COMMAND_BUFFER_SIZE] = {NULL_CHAR};
         if (prepare_buffer(flag_command_buffer, sizeof(flag_command_buffer), flag_command, "FLG")) {
-            s_send(clientSocketFD, flag_command_buffer, strlen(flag_command_buffer));
+            s_send(clientSocketFD, encryption_key, flag_command_buffer, strlen(flag_command_buffer));
             for (int i = 0; i < game->acceptedSocketsCount; i++) {
                 if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
                     strcpy(game->game_clients[i].flag_data, random_str);
@@ -973,6 +1002,7 @@ int generate_client_flag(const char *buffer, const int clientSocketFD, Game *gam
  * Returns: Operation status
  */
 int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const int clientSocketFD,
+                       const unsigned char *encryption_key,
                        bool *flag_okay_response,
                        bool *flag_request_dir, Game *game) {
     if (*flag_file_tries >= MAX_FLAG_FILE_TRIES) {
@@ -989,20 +1019,21 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const 
         *flag_request_dir = false;
     } else {
         if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*flag_request_dir) {
-            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD, game);
+            *flag_request_dir = generate_client_flag(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD,
+                                                     encryption_key, game);
             return true;
         }
         if (*flag_request_dir) {
             if (strcmp(strstr(buffer, "data:") + DATA_OFFSET, "okay") == CMP_EQUAL) {
                 *flag_okay_response = true;
                 //once flag is set can ask for key
-                s_send(clientSocketFD, KEY_REQUEST, strlen(KEY_REQUEST));
+                s_send(clientSocketFD, encryption_key,KEY_REQUEST, strlen(KEY_REQUEST));
                 return true;
             }
         }
     }
     if (*flag_request_dir == false) {
-        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+        s_send(clientSocketFD, encryption_key,DIR_REQUEST, strlen(DIR_REQUEST));
         *flag_file_tries += 1;
     }
     return true;
@@ -1024,6 +1055,7 @@ int handle_client_flag(const char *buffer, unsigned int *flag_file_tries, const 
  * Returns: Operation status
  */
 bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const int clientSocketFD,
+                       const unsigned char *encryption_key,
                        bool *key_okay_response,
                        bool *key_request_dir, Game *game) {
     if (*key_file_tries >= MAX_FLAG_FILE_TRIES) {
@@ -1040,7 +1072,8 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
         *key_request_dir = false;
     } else {
         if (!contains_banned_word(strstr(buffer, "type:") + TYPE_OFFSET) && !*key_request_dir) {
-            *key_request_dir = generate_client_key(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD, game);
+            *key_request_dir = generate_client_key(strstr(buffer, "data:") + DATA_OFFSET, clientSocketFD,
+                                                   encryption_key, game);
             return true;
         }
         if (*key_request_dir) {
@@ -1051,7 +1084,7 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
         }
     }
     if (*key_request_dir == false) {
-        s_send(clientSocketFD, DIR_REQUEST, strlen(DIR_REQUEST));
+        s_send(clientSocketFD, encryption_key,DIR_REQUEST, strlen(DIR_REQUEST));
         *key_file_tries += 1;
     }
     return true;
@@ -1068,13 +1101,14 @@ bool handle_client_key(const char *buffer, unsigned int *key_file_tries, const i
  *   - Creates key file and encrypts flag file
  * Returns: Status code
  */
-bool generate_client_key(const char *buffer, const int clientSocketFD, Game *game) {
+bool generate_client_key(const char *buffer, const int clientSocketFD, const unsigned char *encryption_key,
+                         Game *game) {
     char key_command[KEY_COMMAND_SIZE] = {NULL_CHAR};
     char random_key[RANDOM_KEY_SIZE] = {NULL_CHAR};
-    const char encryption_methods[][16] = {"aes-256-cbc", "aes-128-cbc", "des-ede3"};
+    const char encryption_methods[][ENCRYPTION_METHOD_SIZE] = {"aes-256-cbc", "aes-128-cbc", "des-ede3"};
     // Select a random encryption method
     const char *selected_method = encryption_methods[arc4random_uniform(
-        sizeof(encryption_methods) / sizeof(encryption_methods[0]))];
+        sizeof(encryption_methods) / sizeof(encryption_methods[FIRST_ENC_INDEX]))];
     // Generate an 8-character random key
     generate_random_string(random_key, RANDOM_KEY_SIZE - NULL_CHAR_LEN);
     char *flag_path = NULL;
@@ -1092,7 +1126,7 @@ bool generate_client_key(const char *buffer, const int clientSocketFD, Game *gam
                  flag_path) < sizeof(key_command)) {
         char key_command_buffer[KEY_COMMAND_BUFFER_SIZE] = {NULL_CHAR};
         if (prepare_buffer(key_command_buffer, sizeof(key_command_buffer), key_command, "KEY")) {
-            s_send(clientSocketFD, key_command_buffer, strlen(key_command_buffer));
+            s_send(clientSocketFD, encryption_key, key_command_buffer, strlen(key_command_buffer));
             return true;
         }
     }
@@ -1269,6 +1303,10 @@ int main(const int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     // Start server main loop
+    /*OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS |
+                        OPENSSL_INIT_ADD_ALL_DIGESTS |
+                        OPENSSL_INIT_LOAD_CONFIG,
+                        NULL);*/
     startAcceptingIncomingConnections(serverSocketFD);
     wait_for_all_threads_to_finish();
     // Cleanup resources
