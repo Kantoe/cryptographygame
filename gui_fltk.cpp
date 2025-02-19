@@ -149,6 +149,7 @@ typedef struct {
     Fl_Box *cwd_label;
     Fl_Button *submit_button;
     int socket_fd;
+    const unsigned char *encryption_key;
     Fl_Box *cmd_label;
     Fl_Box *enc_label;
     Fl_Box *key_label;
@@ -196,7 +197,7 @@ void set_connection_status(const bool is_closed) {
  */
 void update_cwd_label(const char *new_cwd) {
     if (gui && gui->cwd_label) {
-        gui->cwd_label->label(new_cwd);
+        gui->cwd_label->copy_label(new_cwd);
         gui->window->redraw();
     }
 }
@@ -269,7 +270,7 @@ static void handle_regular_command(const char *command) {
     }
     char buffer[COMMAND_BUFFER_SIZE];
     prepare_buffer(buffer, sizeof(buffer), command, "CMD");
-    s_send(gui->socket_fd, buffer, strlen(buffer));
+    s_send(gui->socket_fd, gui->encryption_key, buffer, strlen(buffer));
     char message[COMMAND_MESSAGE_SIZE];
     snprintf(message, sizeof(message), ":$> %s\n", command);
     append_to_text_view(message);
@@ -303,7 +304,7 @@ static void handle_encryption_command() {
              encryption_method, path, path, key, path, path);
     char buffer[COMMAND_MESSAGE_SIZE];
     prepare_buffer(buffer, sizeof(buffer), command, "CMD");
-    s_send(gui->socket_fd, buffer, strlen(buffer));
+    s_send(gui->socket_fd, gui->encryption_key, buffer, strlen(buffer));
 }
 
 /**
@@ -473,7 +474,7 @@ void initialize_encryption_section(GuiComponents *gui, const int margin, const i
  * Args:
  *   socket_fd: Socket for server communication
  */
-void start_gui(const int socket_fd) {
+void start_gui(const int socket_fd, const unsigned char *encryption_key) {
     cleanup_gui();
     const int screen_w = Fl::w();
     const int screen_h = Fl::h();
@@ -482,13 +483,14 @@ void start_gui(const int socket_fd) {
     gui = new GuiComponents;
     memset(gui, 0, sizeof(GuiComponents));
     gui->socket_fd = socket_fd;
+    gui->encryption_key = encryption_key;
     gui->window = new Fl_Window(win_w, win_h, "Cryptography Game Client");
     constexpr int margin = MARGIN_SIZE;
     const int text_display_h = win_h - (TEXT_DISPLAY_HEIGHT_MULTIPLIER * ELEMENT_HEIGHT +
                                         TEXT_DISPLAY_MARGIN_MULTIPLIER * margin +
                                         TEXT_DISPLAY_OFFSET);
-    const int command_width = ((win_w - COMMAND_MARGIN_MULTIPLIER * margin) *
-                               COMMAND_SECTION_WIDTH_PCT) / ENCRYPTION_PCT_DIVISOR;
+    const int command_width = (win_w - COMMAND_MARGIN_MULTIPLIER * margin) *
+                              COMMAND_SECTION_WIDTH_PCT / ENCRYPTION_PCT_DIVISOR;
     initialize_text_display(gui, margin, win_w, text_display_h);
     int y_pos = text_display_h + Y_POS_MARGIN_MULTIPLIER * margin;
     initialize_cwd_section(gui, margin, win_w, y_pos);
