@@ -432,6 +432,7 @@ void wait_for_all_threads_to_finish();
  */
 void handle_closed_games();
 
+/**/
 void reject_client(int serverSocketFD);
 
 void reject_client(const int serverSocketFD) {

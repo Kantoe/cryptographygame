@@ -242,6 +242,7 @@ void termination_handler(int signal);
  */
 void init_signal_handle();
 
+/**/
 void cleanup();
 
 /*
