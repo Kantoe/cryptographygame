@@ -32,7 +32,6 @@
 #define FLAG_OKAY "tlength:38;type:FLG;length:4;data:okay"
 #define KEY_ERROR "tlength:39;type:KEY;length:5;data:error"
 #define KEY_OKAY "tlength:38;type:KEY;length:4;data:okay"
-#define SLEEP 50000
 #define FLAG_PATH_SIZE 512
 #define MY_CWD_SIZE 1024
 #define COMMAND_CWD_SIZE 1024
@@ -378,6 +377,7 @@ void process_message_type(const int socketFD, const unsigned char *encryption_ke
         strncpy(temp, current_data, n);
         temp[n] = '\0';
         append_to_text_view(temp);
+        printf("%s", temp);
     } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
         char *command = malloc(n + NULL_CHAR_LEN);
         if (command != NULL) {
@@ -394,6 +394,7 @@ void process_message_type(const int socketFD, const unsigned char *encryption_ke
         strncpy(temp, current_data, n);
         temp[n] = '\0';
         append_to_text_view(temp);
+        printf("%s", temp);
     } else if (strcmp(current_type, "CWD") == CMP_EQUAL) {
         pthread_mutex_lock(&cwd_mutex);
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));

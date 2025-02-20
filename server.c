@@ -1304,10 +1304,6 @@ int main(const int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     // Start server main loop
-    /*OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS |
-                        OPENSSL_INIT_ADD_ALL_DIGESTS |
-                        OPENSSL_INIT_LOAD_CONFIG,
-                        NULL);*/
     startAcceptingIncomingConnections(serverSocketFD);
     wait_for_all_threads_to_finish();
     // Cleanup resources
