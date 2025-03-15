@@ -13,12 +13,12 @@ extern "C" {
 #include "cryptography_game_util.h"
 }
 
-#define SLEEP 5000
+#define SLEEP 3000
 #define SECONDS 0
 #define MAX_COMMAND_LENGTH 250
 #define COMMAND_BUFFER_SIZE 512
 #define COMMAND_MESSAGE_SIZE 1024
-#define MAX_OPENSSL_LENGTH 225
+#define MAX_OPENSSL_LENGTH 400
 #define FIRST_ENC_LIST_INDEX 0
 #define MESSAGE_WINDOW_ARGS 300, 100, "Message"
 #define MESSAGE_WINDOW_BOX_ARGS 10, 10, 280, 40
@@ -198,6 +198,7 @@ void set_connection_status(const bool is_closed) {
 void update_cwd_label(const char *new_cwd) {
     if (gui && gui->cwd_label) {
         gui->cwd_label->copy_label(new_cwd);
+        usleep(SLEEP);
         gui->window->redraw();
     }
 }
@@ -213,8 +214,11 @@ void update_cwd_label(const char *new_cwd) {
  */
 void append_to_text_view(const char *message) {
     if (gui && gui->text_buffer) {
-        usleep(SLEEP);
         gui->text_buffer->append(message);
+        usleep(SLEEP);
+        gui->text_display->redraw();
+        gui->text_buffer->append("");
+        usleep(SLEEP);
         gui->text_display->redraw();
     }
 }

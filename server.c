@@ -565,6 +565,7 @@ bool init_new_game(const struct AcceptedSocket *clientSocketFD, const int inacti
         perror("malloc");
         return true;
     }
+    memset(game, NULL_CHAR, sizeof(Game));
     game->acceptedSocketsCount++;
     game->game_clients[FIRST_CLIENT_INDEX] = *clientSocketFD;
     pthread_mutex_init(&game->game_mutex, NULL);
@@ -1114,6 +1115,7 @@ bool generate_client_key(const char *buffer, const int clientSocketFD, const uns
     generate_random_string(random_key, RANDOM_KEY_SIZE - NULL_CHAR_LEN);
     char *flag_path = NULL;
     pthread_mutex_lock(&game->game_mutex);
+    printf("Clients in game: %d\n", game->acceptedSocketsCount);
     for (int i = 0; i < game->acceptedSocketsCount; i++) {
         if (game->game_clients[i].acceptedSocketFD == clientSocketFD) {
             flag_path = game->game_clients[i].flag_dir;
