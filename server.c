@@ -432,9 +432,20 @@ void wait_for_all_threads_to_finish();
  */
 void handle_closed_games();
 
-/**/
+/**
+ * @param serverSocketFD servers socket
+ * Operation:
+ * rejects client:
+ * accepets them, sends a messgae that indicates no space left and close their socket
+ */
 void reject_client(int serverSocketFD);
 
+/**
+ * @param serverSocketFD servers socket
+ * Operation:
+ * rejects client:
+ * accepets them, sends a messgae that indicates no space left and close their socket
+ */
 void reject_client(const int serverSocketFD) {
     // Server at capacity, reject new connection
     pthread_mutex_unlock(&globals_mutex);
