@@ -168,6 +168,14 @@ static const char *encryption_methods[] = {
     nullptr
 };
 
+/**
+ * @brief Periodic callback function for updating the GUI.
+ *
+ * This function is triggered at regular intervals to refresh the GUI window.
+ * It ensures that the window is redrawn to reflect any changes.
+ *
+ * @note The void * parameter is unused but required by the FLTK callback signature.
+ */
 static void periodic_update_cb(void *) {
     if (gui && gui->window) {
         gui->window->redraw();
