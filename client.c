@@ -37,6 +37,7 @@
 #define COMMAND_CWD_SIZE 1024
 #define SIGACTION_ERROR -1
 #define SIGNAL_CODE 128
+#define SLEEP 1000000
 
 struct ThreadArgs {
     int socketFD;
@@ -59,6 +60,11 @@ void print_hex(const unsigned char *data, size_t len) {
     }
     printf("\n");
 }
+
+/*
+ * sleeps for nano_sec (nano seconds)
+ */
+void m_sleep(unsigned int nano_sec);
 
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
@@ -241,7 +247,12 @@ void termination_handler(int signal);
  */
 void init_signal_handle();
 
-/**/
+/*
+ * takes care of cleanup:
+ * deletes flag and key files
+ * destroys mutex and closes socket
+ * cleanup for gui
+ */
 void cleanup();
 
 /*
@@ -349,6 +360,16 @@ bool handle_key_requests(const int socketFD, const unsigned char *encryption_key
 }
 
 /*
+ * sleeps for nano_sec (nano seconds)
+ */
+void m_sleep(const unsigned int nano_sec) {
+    struct timespec req;
+    req.tv_sec = 0;
+    req.tv_nsec = nano_sec;
+    nanosleep(&req, NULL);
+}
+
+/*
  * process_message_type: Message type-specific processing
  *
  * Args:
@@ -372,6 +393,7 @@ bool handle_key_requests(const int socketFD, const unsigned char *encryption_key
 void process_message_type(const int socketFD, const unsigned char *encryption_key, const char *current_data,
                           const char *current_type, const int n,
                           bool *flag_requests, bool *key_requests) {
+    m_sleep(SLEEP);
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         char temp[n + 1];
         strncpy(temp, current_data, n);
@@ -578,6 +600,12 @@ void delete_key_file() {
     execute_command(command);
 }
 
+/*
+ * takes care of cleanup:
+ * deletes flag and key files
+ * destroys mutex and closes socket
+ * cleanup for gui
+ */
 void cleanup() {
     printf("exiting...\n");
     delete_flag_file();

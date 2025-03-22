@@ -54,6 +54,7 @@ extern "C" {
 #define Y_POS_INCREMENT_A 20
 #define Y_POS_INCREMENT_B 10
 #define ELEMENT_HEIGHT 30
+#define UI_REFRESH_INTERVAL 0.1
 
 
 /**
@@ -167,6 +168,13 @@ static const char *encryption_methods[] = {
     nullptr
 };
 
+static void periodic_update_cb(void *) {
+    if (gui && gui->window) {
+        gui->window->redraw();
+    }
+    Fl::repeat_timeout(UI_REFRESH_INTERVAL, periodic_update_cb);
+}
+
 /**
  * Updates connection state and notifies user
  * Args:
@@ -198,8 +206,6 @@ void set_connection_status(const bool is_closed) {
 void update_cwd_label(const char *new_cwd) {
     if (gui && gui->cwd_label) {
         gui->cwd_label->copy_label(new_cwd);
-        usleep(SLEEP);
-        gui->window->redraw();
     }
 }
 
@@ -215,11 +221,6 @@ void update_cwd_label(const char *new_cwd) {
 void append_to_text_view(const char *message) {
     if (gui && gui->text_buffer) {
         gui->text_buffer->append(message);
-        usleep(SLEEP);
-        gui->text_display->redraw();
-        gui->text_buffer->append("");
-        usleep(SLEEP);
-        gui->text_display->redraw();
     }
 }
 
@@ -504,5 +505,6 @@ void start_gui(const int socket_fd, const unsigned char *encryption_key) {
     gui->window->resizable(gui->text_display);
     gui->window->end();
     gui->window->show();
+    Fl::add_timeout(UI_REFRESH_INTERVAL, periodic_update_cb);
     Fl::run();
 }
