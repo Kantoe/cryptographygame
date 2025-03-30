@@ -171,14 +171,29 @@ static const char *encryption_methods[] = {
 /**
  * @brief Periodic callback function for updating the GUI.
  *
- * This function is triggered at regular intervals to refresh the GUI window.
- * It ensures that the window is redrawn to reflect any changes.
- *
- * @note The void * parameter is unused but required by the FLTK callback signature.
+ * This function checks shared buffers for changes and updates the GUI accordingly.
+ * Buffers are properly cleared after being processed.
  */
 static void periodic_update_cb(void *) {
     if (gui && gui->window) {
-        gui->window->redraw();
+        // Check for output updates
+        pthread_mutex_lock(&output_mutex);
+        if (output_updated && gui->text_buffer) {
+            gui->text_buffer->append(output_buffer);
+            memset(output_buffer, NULL_CHAR, sizeof(output_buffer));
+            output_updated = false;
+            gui->text_display->redraw();
+        }
+        pthread_mutex_unlock(&output_mutex);
+        // Check for CWD updates
+        pthread_mutex_lock(&cwd_buffer_mutex);
+        if (cwd_updated && gui->cwd_label) {
+            gui->cwd_label->copy_label(cwd_buffer);
+            memset(cwd_buffer, NULL_CHAR, sizeof(cwd_buffer));
+            cwd_updated = false;
+            gui->cwd_label->redraw();
+        }
+        pthread_mutex_unlock(&cwd_buffer_mutex);
     }
     Fl::repeat_timeout(UI_REFRESH_INTERVAL, periodic_update_cb);
 }
@@ -203,21 +218,6 @@ void set_connection_status(const bool is_closed) {
 }
 
 /**
- * Updates working directory display
- * Args:
- *   new_cwd: String containing new working directory path
- * Operation:
- *   - Updates CWD label if GUI exists
- *   - Triggers window redraw
- * Returns: void
- */
-void update_cwd_label(const char *new_cwd) {
-    if (gui && gui->cwd_label) {
-        gui->cwd_label->copy_label(new_cwd);
-    }
-}
-
-/**
  * Adds text to main display area
  * Args:
  *   message: Text string to append
@@ -229,6 +229,7 @@ void update_cwd_label(const char *new_cwd) {
 void append_to_text_view(const char *message) {
     if (gui && gui->text_buffer) {
         gui->text_buffer->append(message);
+        gui->text_display->redraw();
     }
 }
 

@@ -51,6 +51,12 @@ pthread_mutex_t cwd_mutex = PTHREAD_MUTEX_INITIALIZER;
 char flag_path[FLAG_PATH_SIZE] = {NULL_CHAR};
 char key_path[512] = {NULL_CHAR};
 int socketFD = -1;
+pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t cwd_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+char output_buffer[4096] = {0}; // Buffer for OUT and ERR messages
+char cwd_buffer[1024] = {0}; // Buffer for CWD updates
+bool output_updated = false; // Flag to indicate if output buffer has been updated
+bool cwd_updated = false; // Flag to indicate if cwd buffer has been updated
 
 //prototypes
 
@@ -255,6 +261,24 @@ void init_signal_handle();
  */
 void cleanup();
 
+void update_output_buffer(const char *text) {
+    pthread_mutex_lock(&output_mutex);
+    const size_t remaining = sizeof(output_buffer) - strlen(output_buffer) - 1;
+    if (remaining > 0) {
+        strncat(output_buffer, text, remaining);
+        output_updated = true;
+    }
+    pthread_mutex_unlock(&output_mutex);
+}
+
+void update_cwd_buffer(const char *path) {
+    pthread_mutex_lock(&cwd_buffer_mutex);
+    strncpy(cwd_buffer, path, sizeof(cwd_buffer) - 1);
+    cwd_buffer[sizeof(cwd_buffer) - 1] = '\0';
+    cwd_updated = true;
+    pthread_mutex_unlock(&cwd_buffer_mutex);
+}
+
 /*
  * startListeningAndPrintMessagesOnNewThread: Creates listener thread
  *
@@ -393,12 +417,11 @@ void m_sleep(const unsigned int nano_sec) {
 void process_message_type(const int socketFD, const unsigned char *encryption_key, const char *current_data,
                           const char *current_type, const int n,
                           bool *flag_requests, bool *key_requests) {
-    m_sleep(SLEEP);
     if (strcmp(current_type, "OUT") == CMP_EQUAL) {
         char temp[n + 1];
         strncpy(temp, current_data, n);
         temp[n] = '\0';
-        append_to_text_view(temp);
+        update_output_buffer(temp);
         printf("%s", temp);
     } else if (strcmp(current_type, "CMD") == CMP_EQUAL) {
         char *command = malloc(n + NULL_CHAR_LEN);
@@ -415,13 +438,13 @@ void process_message_type(const int socketFD, const unsigned char *encryption_ke
         char temp[n + 1];
         strncpy(temp, current_data, n);
         temp[n] = '\0';
-        append_to_text_view(temp);
+        update_output_buffer(temp);
         printf("%s", temp);
     } else if (strcmp(current_type, "CWD") == CMP_EQUAL) {
         pthread_mutex_lock(&cwd_mutex);
         memset(my_cwd, NULL_CHAR, sizeof(my_cwd));
         strncpy(my_cwd, current_data, n);
-        update_cwd_label(my_cwd);
+        update_cwd_buffer(my_cwd);
         pthread_mutex_unlock(&cwd_mutex);
     } else if (strcmp(current_type, "FLG") == CMP_EQUAL && flag_requests) {
         *flag_requests = handle_flag_requests(socketFD, encryption_key, current_data, n);
@@ -704,7 +727,7 @@ int main(const int argc, char *argv[]) {
     const unsigned char *key = send_recv_key(socketFD, &key_size);
     strcpy(my_cwd, "/home");
     strcpy(command_cwd, "/home");
-    update_cwd_label(my_cwd);
+    update_cwd_buffer(my_cwd);
     // Start message listening thread and handle user input
     startListeningAndPrintMessagesOnNewThread(socketFD, key);
     //initiate signal handler

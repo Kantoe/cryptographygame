@@ -6,23 +6,21 @@
 extern "C" {
 #endif
 
+#include <pthread.h>
+
+extern pthread_mutex_t output_mutex;
+extern pthread_mutex_t cwd_buffer_mutex;
+extern char output_buffer[4096];
+extern char cwd_buffer[1024];
+extern bool output_updated;
+extern bool cwd_updated;
+
 /**
  * Initializes and displays main GUI
  * Args:
  *   socket_fd: Socket for server communication
  */
 void start_gui(int socket_fd, const unsigned char *encryption_key);
-
-/**
- * Updates working directory display
- * Args:
- *   new_cwd: String containing new working directory path
- * Operation:
- *   - Updates CWD label if GUI exists
- *   - Triggers window redraw
- * Returns: void
- */
-void update_cwd_label(const char *new_cwd);
 
 /**
  * Shows a modal message window
@@ -35,17 +33,6 @@ void update_cwd_label(const char *new_cwd);
  * Returns: void
  */
 void display_message(const char *message);
-
-/**
-  * Adds text to main display area
-  * Args:
-  *   message: Text string to append
-  * Operation:
-  *   - Appends to text buffer if GUI exists
-  *   - Triggers text display redraw
-  * Returns: void
-*/
-void append_to_text_view(const char *message);
 
 /**
  * Frees GUI resources
